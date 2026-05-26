@@ -6,12 +6,11 @@ import { customers } from '../data/mockData';
 export default function ClientDatabase({ branchId }: { branchId: string }) {
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showDemoToast, setShowDemoToast] = useState(false);
-  const [demoClient, setDemoClient] = useState<string | null>(null);
+  const [visitStatus, setVisitStatus] = useState('');
 
   const branchClients = customers.filter(c => c.branchId === branchId);
-  const filteredClients = branchClients.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredClients = branchClients.filter(c =>
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.phone.includes(searchTerm)
   );
 
@@ -26,20 +25,24 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
 
   const simulateVisit = async (name: string) => {
     setVisitStatus(`Processing visit for ${name}...`);
-    
+
     // Trigger WhatsApp Automation via MSG91
     try {
-      await fetch('/api/automation/trigger', {
+      const response = await fetch('/api/automation/trigger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event: 'visit_completed',
-          customer: { name, phone: '917439784129' }, // Testing with your number
-          template_id: 'jared',
+          customer: { name, phone: selectedClient.phone }, // Use actual client's phone number
+          template_id: 'appointment_confirmed_wa_text_v1',
           variables: ["Aion Salon", "500", new Date().toLocaleDateString()]
         })
       });
-      setVisitStatus(`WhatsApp sent to ${name}!`);
+      if (response.ok) {
+        setVisitStatus(`WhatsApp sent to ${name}!`);
+      } else {
+        setVisitStatus(`Failed to send WhatsApp to ${name}`);
+      }
     } catch (e) {
       setVisitStatus(`Visit recorded for ${name}`);
     }
@@ -50,7 +53,7 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
       transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.6 }}
@@ -58,8 +61,8 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
     >
       {/* Demo Toast */}
       <AnimatePresence>
-        {showDemoToast && (
-          <motion.div 
+        {visitStatus && (
+          <motion.div
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.9 }}
@@ -70,15 +73,15 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
                 <MessageSquare className="text-accent" size={24} />
               </div>
               <div>
-                <h4 className="font-bold text-sm">WhatsApp Automation Triggered</h4>
+                <h4 className="font-bold text-sm">WhatsApp Automation</h4>
                 <p className="text-xs text-muted mt-1">
-                  Simulating "Welcome Back" message for <strong>{demoClient}</strong>...
+                  {visitStatus}
                 </p>
                 <div className="mt-3 h-1 w-full bg-border rounded-full overflow-hidden">
-                  <motion.div 
+                  <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: '100%' }}
-                    transition={{ duration: 4 }}
+                    transition={{ duration: 3 }}
                     className="h-full bg-accent"
                   />
                 </div>
@@ -99,9 +102,9 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
           <div className="flex gap-2">
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search clients..." 
+              <input
+                type="text"
+                placeholder="Search clients..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-surface border border-border rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none"
@@ -127,12 +130,11 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredClients.map((client) => (
-                  <tr 
-                    key={client.id} 
+                  <tr
+                    key={client.id}
                     onClick={() => setSelectedClient(client)}
-                    className={`hover:bg-surface/30 transition-colors cursor-pointer group ${
-                      selectedClient?.id === client.id ? 'bg-accent/5 border-l-2 border-accent' : ''
-                    }`}
+                    className={`hover:bg-surface/30 transition-colors cursor-pointer group ${selectedClient?.id === client.id ? 'bg-accent/5 border-l-2 border-accent' : ''
+                      }`}
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -171,7 +173,7 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
       {/* Client Detail Sidebar */}
       <div className="glass rounded-[2rem] flex flex-col overflow-y-auto custom-scrollbar max-h-[calc(100vh-8rem)]">
         {selectedClient ? (
-          <motion.div 
+          <motion.div
             key={selectedClient.id}
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -184,13 +186,13 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
               <h3 className="text-2xl font-bold">{selectedClient.name}</h3>
               <p className="text-muted text-sm mt-1">{selectedClient.phone}</p>
               <div className="flex justify-center gap-3 mt-6">
-                <button 
+                <button
                   onClick={() => handleCall(selectedClient.phone)}
                   className="p-3 bg-surface rounded-2xl border border-border text-accent hover:bg-accent hover:text-black transition-all"
                 >
                   <Phone size={20} />
                 </button>
-                <button 
+                <button
                   onClick={() => handleWhatsApp(selectedClient.phone)}
                   className="p-3 bg-surface rounded-2xl border border-border text-green-500 hover:bg-green-500 hover:text-white transition-all"
                 >
@@ -255,7 +257,7 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
             </div>
 
             <div className="p-6 bg-surface/50 border-t border-border mt-auto flex gap-3">
-              <motion.button 
+              <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => simulateVisit(selectedClient.name)}
                 className="flex-1 bg-accent/10 text-accent border border-accent/30 py-4 rounded-2xl font-bold hover:bg-accent/20 transition-all flex items-center justify-center gap-2"
@@ -263,7 +265,7 @@ export default function ClientDatabase({ branchId }: { branchId: string }) {
                 <CheckCircle2 size={18} />
                 Complete Visit
               </motion.button>
-              <motion.button 
+              <motion.button
                 whileTap={{ scale: 0.95 }}
                 className="flex-[2] bg-accent text-accent-foreground py-4 rounded-2xl font-bold hover:opacity-90 transition-all shadow-lg shadow-accent/20"
               >

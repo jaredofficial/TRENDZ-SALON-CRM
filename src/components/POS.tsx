@@ -81,7 +81,7 @@ export default function POS({ branchId }: { branchId: string }) {
           body: JSON.stringify({
             event: 'payment_received',
             customer: selectedCustomer,
-            template_id: 'jared', 
+            template_id: 'appointment_confirmed_wa_text_v1', 
             variables: [
               "Aion Salon", 
               total.toString(), 
@@ -105,7 +105,7 @@ export default function POS({ branchId }: { branchId: string }) {
           body: JSON.stringify({
             event: 'appointment_confirmed',
             customer: { name, phone: '917439784129' }, // Using your number for demo testing
-            template_id: 'appointment_confirmation'
+            template_id: 'appointment_confirmed_wa_text_v1'
           })
         });
         setVisitStatus(`Successfully confirmed appointment for ${name}!`);

@@ -118,6 +118,19 @@ async function startServer() {
             throw new Error("No Template ID provided for automation");
           }
 
+          const components: any = {};
+          if (finalTemplateId === 'appointment_confirmed_wa_text_v1') {
+            components.body_1 = { type: "text", value: customer?.name || "Client" };
+            components.body_2 = { type: "text", value: variables?.[0] || "Aion Salon" };
+            components.body_3 = { type: "text", value: variables?.[1] || "500" };
+            components.body_4 = { type: "text", value: variables?.[2] || new Date().toLocaleDateString() };
+          } else {
+            // Default fallback/reminder template structure
+            components.body_1 = { type: "text", value: customer?.name || "Client" };
+            components.body_2 = { type: "text", value: variables?.[0] || "Aion Salon" };
+            components.body_3 = { type: "text", value: variables?.[1] || new Date().toLocaleDateString() };
+          }
+
           const payload = {
             integrated_number: integratedNumber,
             content_type: "template",
@@ -130,20 +143,18 @@ async function startServer() {
                   code: "en",
                   policy: "deterministic" 
                 },
-                namespace: "0c39b036_60ef_4a70_817d_744d7f2f92bf",
+                namespace: process.env.MSG91_NAMESPACE || "0c39b036_60ef_4a70_817d_744d7f2f92bf",
                 to_and_components: [
                   {
                     to: [to],
-                    components: {
-                      body_1: { type: "text", value: variables?.[0] || customer.name },
-                      body_2: { type: "text", value: variables?.[1] || "500" },
-                      body_3: { type: "text", value: variables?.[2] || new Date().toLocaleDateString() }
-                    }
+                    components: components
                   }
                 ]
               }
             }
           };
+
+          console.log("[AUTOMATION] Payload to MSG91:", JSON.stringify(payload, null, 2));
 
           const response = await fetch("https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/", {
             method: "POST",
