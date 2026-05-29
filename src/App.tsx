@@ -16,11 +16,12 @@ import {
   MapPin,
   ChevronDown,
   Sun,
-  Moon
+  Moon,
+  Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { customers, services, staffMembers } from './data/mockData';
-import { User as UserType, Branch, branches } from './types';
+import { User as UserType, Branch, branches, Appointment } from './types';
 import Dashboard from './components/Dashboard';
 import POS from './components/POS';
 import StaffTracking from './components/StaffTracking';
@@ -28,8 +29,9 @@ import ClientDatabase from './components/ClientDatabase';
 import AutomationSettings from './components/AutomationSettings';
 import Settings from './components/Settings';
 import Login from './components/Login';
+import Appointments from './components/Appointments';
 
-type Tab = 'dashboard' | 'pos' | 'staff' | 'clients' | 'automations' | 'settings';
+type Tab = 'dashboard' | 'pos' | 'appointments' | 'staff' | 'clients' | 'automations' | 'settings';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
@@ -41,6 +43,58 @@ export default function App() {
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [appointments, setAppointments] = useState<Appointment[]>([
+    {
+      id: '1',
+      clientName: 'Sarah Johnson',
+      phone: '+919876543210',
+      date: new Date().toISOString().split('T')[0], // Today
+      time: '10:30 AM',
+      service: 'Haircut & Styling',
+      status: 'booked',
+      price: 850
+    },
+    {
+      id: '2',
+      clientName: 'Michael Chen',
+      phone: '+919876543211',
+      date: new Date().toISOString().split('T')[0], // Today
+      time: '12:00 PM',
+      service: 'Beard Trim',
+      status: 'booked',
+      price: 350
+    },
+    {
+      id: '3',
+      clientName: 'Jessica Alba',
+      phone: '+919876543212',
+      date: new Date().toISOString().split('T')[0], // Today
+      time: '02:30 PM',
+      service: 'Full Coloring',
+      status: 'booked',
+      price: 2500
+    },
+    {
+      id: '4',
+      clientName: 'Jared Manuel',
+      phone: '+919836682729',
+      date: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Tomorrow
+      time: '11:00 AM',
+      service: 'Facial Treatment',
+      status: 'booked',
+      price: 1200
+    },
+    {
+      id: '5',
+      clientName: 'Amit Kumar',
+      phone: '+919876543211',
+      date: new Date(Date.now() - 86400000).toISOString().split('T')[0], // Yesterday
+      time: '04:00 PM',
+      service: 'Manicure',
+      status: 'completed',
+      price: 600
+    }
+  ]);
 
   useEffect(() => {
     if (theme === 'light') {
@@ -74,6 +128,7 @@ export default function App() {
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'pos', icon: CreditCard, label: 'POS / Checkout' },
+    { id: 'appointments', icon: Calendar, label: 'Appointments' },
     { id: 'staff', icon: Users, label: 'Staff Tracking' },
     { id: 'clients', icon: UserCircle, label: 'Client Base' },
     { id: 'automations', icon: Bell, label: 'Automations' },
@@ -339,7 +394,7 @@ export default function App() {
         </header>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div id="main-content" className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -349,8 +404,9 @@ export default function App() {
               transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.6 }}
               className="h-full"
             >
-              {activeTab === 'dashboard' && <Dashboard onNavigate={setActiveTab} branchId={selectedBranchId} userRole={currentUser?.role} userName={currentUser?.name} />}
+              {activeTab === 'dashboard' && <Dashboard onNavigate={setActiveTab} branchId={selectedBranchId} userRole={currentUser?.role} userName={currentUser?.name} appointments={appointments} />}
               {activeTab === 'pos' && <POS branchId={selectedBranchId} />}
+              {activeTab === 'appointments' && <Appointments appointments={appointments} setAppointments={setAppointments} />}
               {activeTab === 'staff' && <StaffTracking branchId={selectedBranchId} />}
               {activeTab === 'clients' && <ClientDatabase branchId={selectedBranchId} />}
               {activeTab === 'automations' && <AutomationSettings />}

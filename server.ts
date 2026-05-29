@@ -103,9 +103,57 @@ async function startServer() {
     const { event, customer, template_id, variables } = req.body;
     console.log(`Automation Triggered: ${event} for ${customer?.name}`);
 
-    if (event === 'visit_completed' || event === 'payment_received' || event === 'appointment_confirmed') {
-      const delay = 3000; // 3 second delay
-      
+    const supportedEvents = [
+      'visit_completed',
+      'payment_received',
+      'appointment_confirmed',
+      'appointment_rescheduled',
+      'appointment_reminder',
+      'google_review_follow_up',
+      'checkout_upsell'
+    ];
+
+    if (supportedEvents.includes(event)) {
+      let delay = 3000; // default 3s delay
+
+      if (event === 'google_review_follow_up') {
+        delay = 2 * 60 * 1000; // 2 minutes
+      } else if (event === 'checkout_upsell') {
+        delay = 6 * 60 * 1000; // 6 minutes
+      } else if (event === 'appointment_reminder') {
+        const apptDateStr = req.body.appointmentDate;
+        const apptTimeStr = req.body.appointmentTime;
+        if (apptDateStr && apptTimeStr) {
+          const timeMatch = apptTimeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+          if (timeMatch) {
+            let hours = parseInt(timeMatch[1]);
+            const minutes = parseInt(timeMatch[2]);
+            const ampm = timeMatch[3].toUpperCase();
+            if (ampm === 'PM' && hours < 12) hours += 12;
+            if (ampm === 'AM' && hours === 12) hours = 0;
+            
+            const apptDateTime = new Date(apptDateStr);
+            apptDateTime.setHours(hours, minutes, 0, 0);
+            
+            const now = new Date();
+            // Reminder target is 5 minutes before appointment
+            const reminderTime = new Date(apptDateTime.getTime() - 5 * 60 * 1000);
+            const diffMs = reminderTime.getTime() - now.getTime();
+            
+            // Fallback to 10 seconds if reminder time has passed or is very near
+            delay = diffMs > 0 ? diffMs : 10000;
+            console.log(`[REMINDER] Calculated delay: ${delay}ms for appointment at ${apptDateTime.toISOString()}`);
+          }
+        }
+      }
+
+      if (req.body.testMode) {
+        delay = (event === 'google_review_follow_up' || event === 'checkout_upsell' || event === 'appointment_reminder') ? 5000 : 1000;
+        console.log(`[TEST MODE] Overriding delay to ${delay}ms for event '${event}'`);
+      }
+
+      console.log(`Scheduling automation for event '${event}' with delay of ${delay}ms`);
+
       setTimeout(async () => {
         try {
           const { authKey, integratedNumber } = getMsg91Auth();
@@ -121,9 +169,30 @@ async function startServer() {
           const components: any = {};
           if (finalTemplateId === 'appointment_confirmed_wa_text_v1') {
             components.body_1 = { type: "text", value: customer?.name || "Client" };
-            components.body_2 = { type: "text", value: variables?.[0] || "Aion Salon" };
-            components.body_3 = { type: "text", value: variables?.[1] || "500" };
-            components.body_4 = { type: "text", value: variables?.[2] || new Date().toLocaleDateString() };
+            components.body_2 = { type: "text", value: variables?.[0] || "" };
+            components.body_3 = { type: "text", value: variables?.[1] || "" };
+            components.body_4 = { type: "text", value: variables?.[2] || "" };
+          } else if (finalTemplateId === 'pos_checkout_confirmation') {
+            components.body_1 = { type: "text", value: customer?.name || "Client" };
+            components.body_2 = { type: "text", value: variables?.[0] || "" };
+            components.body_3 = { type: "text", value: variables?.[1] || "" };
+          } else if (finalTemplateId === 'appointment_reschedule_text') {
+            components.body_1 = { type: "text", value: customer?.name || "Client" };
+            components.body_2 = { type: "text", value: variables?.[0] || "" };
+            components.body_3 = { type: "text", value: variables?.[1] || "" };
+            components.body_4 = { type: "text", value: variables?.[2] || "" };
+          } else if (finalTemplateId === 'google_review_follow_up_text') {
+            components.body_1 = { type: "text", value: "Trendz Salon" };
+            components.body_2 = { type: "text", value: variables?.[0] || "" };
+          } else if (finalTemplateId === 'appointment_reminder_text') {
+            components.body_1 = { type: "text", value: customer?.name || "Client" };
+            components.body_2 = { type: "text", value: "Vintage Paris" };
+            components.body_3 = { type: "text", value: variables?.[0] || "" };
+            components.body_4 = { type: "text", value: variables?.[1] || "" };
+          } else if (finalTemplateId === 'appointment_follow_up_upsell') {
+            components.header_1 = { type: "text", value: customer?.name || "Client" };
+            components.body_1 = { type: "text", value: customer?.name || "Client" };
+            components.body_2 = { type: "text", value: variables?.[0] || "" };
           } else {
             // Default fallback/reminder template structure
             components.body_1 = { type: "text", value: customer?.name || "Client" };

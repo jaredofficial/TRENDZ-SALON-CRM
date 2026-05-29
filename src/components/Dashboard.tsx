@@ -113,8 +113,9 @@ const branchData: Record<string, any> = {
 };
 
 import { supabase } from '../lib/supabase';
+import { Appointment } from '../types';
 
-export default function Dashboard({ onNavigate, branchId, userRole, userName }: { onNavigate: (tab: any) => void, branchId: string, userRole?: string, userName?: string }) {
+export default function Dashboard({ onNavigate, branchId, userRole, userName, appointments = [] }: { onNavigate: (tab: any) => void, branchId: string, userRole?: string, userName?: string, appointments?: Appointment[] }) {
   const [connectionStatus, setConnectionStatus] = React.useState<'checking' | 'connected' | 'error'>('checking');
 
   // Filter data based on branch
@@ -398,31 +399,39 @@ export default function Dashboard({ onNavigate, branchId, userRole, userName }: 
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-bold">Today's Appointments</h3>
             <button 
-              onClick={() => onNavigate('clients')}
+              onClick={() => onNavigate('appointments')}
               className="text-xs text-accent font-semibold uppercase tracking-widest hover:underline"
             >
               View All
             </button>
           </div>
-          <div className="space-y-4">
-            {[
-              { time: '10:30 AM', client: 'Sarah Johnson', service: 'Haircut & Styling', staff: 'Emma' },
-              { time: '12:00 PM', client: 'Michael Chen', service: 'Beard Trim', staff: 'David' },
-              { time: '02:30 PM', client: 'Jessica Alba', service: 'Full Coloring', staff: 'Emma' },
-            ].map((appt, i) => (
-              <div key={i} className="flex items-center gap-4 p-4 rounded-2xl bg-surface-hover border border-border group hover:border-accent/30 transition-all cursor-pointer">
-                <div className="w-12 h-12 rounded-xl bg-surface flex flex-col items-center justify-center text-accent font-bold">
-                  <Clock size={16} />
+          <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+            {(() => {
+              const todayStr = new Date().toISOString().split('T')[0];
+              const todayAppts = appointments.filter(appt => appt.date === todayStr && appt.status !== 'cancelled');
+              
+              return todayAppts.length > 0 ? (
+                todayAppts.map((appt) => (
+                  <div key={appt.id} onClick={() => onNavigate('appointments')} className="flex items-center gap-4 p-4 rounded-2xl bg-surface-hover border border-border group hover:border-accent/30 transition-all cursor-pointer">
+                    <div className="w-12 h-12 rounded-xl bg-surface flex flex-col items-center justify-center text-accent font-bold">
+                      <Clock size={16} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold">{appt.clientName}</p>
+                      <p className="text-xs text-muted">{appt.service}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold">{appt.time}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 text-muted">
+                  <p className="text-sm font-semibold text-white">No Appointments</p>
+                  <p className="text-xs mt-1">No bookings scheduled for today.</p>
                 </div>
-                <div className="flex-1">
-                  <p className="font-bold">{appt.client}</p>
-                  <p className="text-xs text-muted">{appt.service} • {appt.staff}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold">{appt.time}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })()}
           </div>
         </div>
       </div>

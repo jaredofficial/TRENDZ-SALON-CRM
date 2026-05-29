@@ -45,3 +45,15 @@ export const users: (User & { password: string })[] = [
     branchId: 'new-market' 
   },
 ];
+
+export interface Appointment {
+  id: string;
+  clientName: string;
+  phone: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM
+  service: string;
+  status: 'booked' | 'completed' | 'rescheduled' | 'cancelled';
+  price: number;
+}
+

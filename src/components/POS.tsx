@@ -74,6 +74,9 @@ export default function POS({ branchId }: { branchId: string }) {
   const finalizePayment = async () => {
     // Trigger MSG91 WhatsApp Automation
     if (selectedCustomer) {
+      const servicesList = cart.map(item => item.name).join(', ');
+
+      // 1. POS Checkout Confirmation
       try {
         await fetch('/api/automation/trigger', {
           method: 'POST',
@@ -81,16 +84,51 @@ export default function POS({ branchId }: { branchId: string }) {
           body: JSON.stringify({
             event: 'payment_received',
             customer: selectedCustomer,
-            template_id: 'appointment_confirmed_wa_text_v1', 
+            template_id: 'pos_checkout_confirmation',
             variables: [
-              "Aion Salon", 
-              total.toString(), 
-              new Date().toLocaleDateString()
+              total.toString(),
+              servicesList
             ]
           })
         });
       } catch (e) {
-        console.error('Failed to trigger WhatsApp automation:', e);
+        console.error('Failed to trigger checkout confirmation automation:', e);
+      }
+
+      // 2. Google Review Follow-up (2 min delay handled in backend)
+      try {
+        await fetch('/api/automation/trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'google_review_follow_up',
+            customer: selectedCustomer,
+            template_id: 'google_review_follow_up_text',
+            variables: [
+              servicesList
+            ]
+          })
+        });
+      } catch (e) {
+        console.error('Failed to trigger review follow-up automation:', e);
+      }
+
+      // 3. Upsell Follow-up (6 min delay handled in backend)
+      try {
+        await fetch('/api/automation/trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'checkout_upsell',
+            customer: selectedCustomer,
+            template_id: 'appointment_follow_up_upsell',
+            variables: [
+              servicesList
+            ]
+          })
+        });
+      } catch (e) {
+        console.error('Failed to trigger upsell automation:', e);
       }
     }
 
@@ -105,7 +143,12 @@ export default function POS({ branchId }: { branchId: string }) {
           body: JSON.stringify({
             event: 'appointment_confirmed',
             customer: { name, phone: '917439784129' }, // Using your number for demo testing
-            template_id: 'appointment_confirmed_wa_text_v1'
+            template_id: 'appointment_confirmed_wa_text_v1',
+            variables: [
+              new Date().toLocaleString(),
+              "Haircut & Styling",
+              "917439784129"
+            ]
           })
         });
         setVisitStatus(`Successfully confirmed appointment for ${name}!`);
