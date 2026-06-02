@@ -13,26 +13,26 @@
 
 @layer base {
   :root {
-    --bg: #0a0a0a;
-    --surface: #141414;
-    --surface-hover: #1c1c1c;
-    --muted: #888888;
-    --border: #262626;
-    --text: #ffffff;
-    --card-text: #ffffff;
-    --accent: #d4ff33;
-    --accent-foreground: #000000;
+    --bg: #09090b;
+    --surface: #18181b;
+    --surface-hover: #27272a;
+    --muted: #a1a1aa;
+    --border: #27272a;
+    --text: #fafafa;
+    --card-text: #fafafa;
+    --accent: #dc2626;
+    --accent-foreground: #ffffff;
   }
 
   .light {
-    --bg: #f8fafc;
+    --bg: #fafafa;
     --surface: #ffffff;
-    --surface-hover: #f1f5f9;
-    --muted: #64748b;
-    --border: #e2e8f0;
-    --text: #0f172a;
-    --card-text: #0f172a;
-    --accent: #ff3333;
+    --surface-hover: #f4f4f5;
+    --muted: #71717a;
+    --border: #e4e4e7;
+    --text: #09090b;
+    --card-text: #09090b;
+    --accent: #dc2626;
     --accent-foreground: #ffffff;
   }
 

@@ -17,14 +17,15 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Appointment } from '../types';
-import { customers, services } from '../data/mockData';
+import { services } from '../data/mockData';
 
 interface AppointmentsProps {
   appointments: Appointment[];
   setAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
+  clients?: any[];
 }
 
-export default function Appointments({ appointments, setAppointments }: AppointmentsProps) {
+export default function Appointments({ appointments, setAppointments, clients = [] }: AppointmentsProps) {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -59,7 +60,7 @@ export default function Appointments({ appointments, setAppointments }: Appointm
 
   // Filter clients based on search input
   const filteredCustomers = clientSearch
-    ? customers.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()))
+    ? clients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()))
     : [];
 
   // Calendar calculations
@@ -116,7 +117,10 @@ export default function Appointments({ appointments, setAppointments }: Appointm
   };
 
   const formatDateString = (date: Date) => {
-    return date.toISOString().split('T')[0];
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   };
 
   const getAppointmentsForDate = (date: Date) => {
@@ -332,10 +336,10 @@ export default function Appointments({ appointments, setAppointments }: Appointm
       {viewMode === 'calendar' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Calendar Grid */}
-          <div className="lg:col-span-2 glass rounded-[2rem] p-6 space-y-6">
+          <div className="lg:col-span-2 glass rounded-[2rem] p-4 md:p-6 space-y-6">
             {/* Calendar Header */}
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-xl">
+              <h3 className="font-bold text-lg md:text-xl">
                 {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
               </h3>
               <div className="flex gap-2">
@@ -362,7 +366,7 @@ export default function Appointments({ appointments, setAppointments }: Appointm
             </div>
 
             {/* Calendar Days */}
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-1 md:gap-2">
               {days.map((day, idx) => {
                 const dayAppts = getAppointmentsForDate(day.date);
                 const isSelected = formatDateString(day.date) === formatDateString(selectedDate);
@@ -372,7 +376,7 @@ export default function Appointments({ appointments, setAppointments }: Appointm
                   <button
                     key={idx}
                     onClick={() => handleDayClick(day.date)}
-                    className={`aspect-square rounded-2xl p-2 flex flex-col justify-between items-center transition-all relative border ${
+                    className={`aspect-square rounded-xl md:rounded-2xl p-1 md:p-2 flex flex-col justify-between items-center transition-all relative border ${
                       isSelected 
                         ? 'bg-accent border-accent text-black font-bold' 
                         : day.isCurrentMonth
@@ -382,21 +386,21 @@ export default function Appointments({ appointments, setAppointments }: Appointm
                           : 'bg-surface/30 border-transparent text-muted/40 hover:bg-surface/50'
                     }`}
                   >
-                    <span className="text-sm self-start">{day.date.getDate()}</span>
+                    <span className="text-xs md:text-sm self-start">{day.date.getDate()}</span>
                     
                     {/* Appointment dots indicator */}
                     {dayAppts.length > 0 && (
-                      <div className="flex gap-1 justify-center w-full mt-auto">
+                      <div className="flex gap-0.5 md:gap-1 justify-center w-full mt-auto">
                         {dayAppts.slice(0, 3).map((appt) => (
                           <span 
                             key={appt.id} 
-                            className={`w-1.5 h-1.5 rounded-full ${
+                            className={`w-1 md:w-1.5 h-1 md:h-1.5 rounded-full ${
                               isSelected ? 'bg-black' : appt.status === 'cancelled' ? 'bg-red-500' : 'bg-accent'
                             }`}
                           />
                         ))}
                         {dayAppts.length > 3 && (
-                          <span className={`text-[8px] font-bold ${isSelected ? 'text-black' : 'text-accent'}`}>+</span>
+                          <span className={`text-[6px] md:text-[8px] font-bold ${isSelected ? 'text-black' : 'text-accent'}`}>+</span>
                         )}
                       </div>
                     )}

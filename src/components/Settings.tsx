@@ -8,15 +8,12 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
-export default function Settings() {
-  const [salonSettings, setSalonSettings] = useState({
-    revenueGoal: '500000',
-    upiId: 'roy.rahul11101@okhdfcbank',
-    salonName: 'Aion Salon & Spa',
-    loyaltyPointsPerRupee: '1',
-    defaultMessageCap: '5'
-  });
+interface SettingsProps {
+  settings: any;
+  setSettings: React.Dispatch<React.SetStateAction<any>>;
+}
 
+export default function Settings({ settings, setSettings }: SettingsProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -34,7 +31,7 @@ export default function Settings() {
       initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
       transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.6 }}
-      className="max-w-4xl mx-auto space-y-8 pb-12"
+      className="max-w-3xl mx-auto space-y-8 pb-12"
     >
       <div className="flex items-center justify-between">
         <div>
@@ -45,8 +42,8 @@ export default function Settings() {
           whileTap={{ scale: 0.95 }}
           onClick={handleSave}
           disabled={isSaving}
-          className={`px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg ${
-            isSaved ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-accent text-accent-foreground shadow-accent/20 hover:opacity-90'
+          className={`px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg ${
+            isSaved ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-accent text-white shadow-accent/20 hover:opacity-90'
           }`}
         >
           {isSaving ? (
@@ -60,54 +57,52 @@ export default function Settings() {
         </motion.button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Salon Configuration */}
-        <div className="glass rounded-[2rem] p-8 space-y-6 md:col-span-2 max-w-2xl">
-          <h3 className="text-xl font-bold flex items-center gap-2">
-            <Target className="text-accent" size={24} />
-            Salon Configuration
-          </h3>
-          <div className="space-y-6">
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">Monthly Revenue Goal (₹)</label>
+      {/* Salon Configuration Card */}
+      <div className="glass rounded-[2rem] p-8 space-y-6">
+        <h3 className="text-xl font-bold flex items-center gap-2">
+          <Target className="text-accent" size={24} />
+          Salon Configuration
+        </h3>
+        <div className="space-y-6">
+          <div>
+            <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">Monthly Revenue Goal (₹)</label>
+            <input 
+              type="text" 
+              value={settings.revenueGoal}
+              onChange={(e) => setSettings({...settings, revenueGoal: e.target.value})}
+              className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 transition-all text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">UPI ID for QR Code</label>
+            <div className="relative">
+              <QrCode className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
               <input 
                 type="text" 
-                value={salonSettings.revenueGoal}
-                onChange={(e) => setSalonSettings({...salonSettings, revenueGoal: e.target.value})}
-                className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 transition-all"
+                value={settings.upiId}
+                onChange={(e) => setSettings({...settings, upiId: e.target.value})}
+                className="w-full bg-surface border border-border rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-accent/50 transition-all text-sm"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">Loyalty Points (Points per ₹100)</label>
+              <input 
+                type="number" 
+                value={settings.loyaltyPointsPerRupee}
+                onChange={(e) => setSettings({...settings, loyaltyPointsPerRupee: e.target.value})}
+                className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 transition-all text-sm"
               />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">UPI ID for QR Code</label>
-              <div className="relative">
-                <QrCode className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
-                <input 
-                  type="text" 
-                  value={salonSettings.upiId}
-                  onChange={(e) => setSalonSettings({...salonSettings, upiId: e.target.value})}
-                  className="w-full bg-surface border border-border rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-accent/50 transition-all"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">Loyalty Points (Points per ₹100)</label>
-                <input 
-                  type="number" 
-                  value={salonSettings.loyaltyPointsPerRupee}
-                  onChange={(e) => setSalonSettings({...salonSettings, loyaltyPointsPerRupee: e.target.value})}
-                  className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 transition-all"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">Default WhatsApp Cap</label>
-                <input 
-                  type="number" 
-                  value={salonSettings.defaultMessageCap}
-                  onChange={(e) => setSalonSettings({...salonSettings, defaultMessageCap: e.target.value})}
-                  className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 transition-all"
-                />
-              </div>
+              <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">Default WhatsApp Cap</label>
+              <input 
+                type="number" 
+                value={settings.defaultMessageCap}
+                onChange={(e) => setSettings({...settings, defaultMessageCap: e.target.value})}
+                className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 transition-all text-sm"
+              />
             </div>
           </div>
         </div>

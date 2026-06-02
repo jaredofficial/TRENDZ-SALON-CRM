@@ -9,41 +9,19 @@ export interface User {
   username: string;
   name: string;
   role: Role;
-  branchId?: string; // Optional for owners, required for managers
 }
 
 export const branches: Branch[] = [
-  { id: 'chandni', name: 'Chandni Branch' },
-  { id: 'new-market', name: 'New Market Branch' },
+  { id: 'trendz', name: 'Trendz Salon' },
 ];
 
 export const users: (User & { password: string })[] = [
   { 
-    username: 'pretti_pillay8426', 
-    password: 'Vpsalon@pp-8426', 
-    name: 'Pretti Pillay', 
+    username: 'wasif-admin', 
+    password: 'Trendzsalon@GR1234', 
+    name: 'Wasif', 
     role: 'owner' 
-  },
-  { 
-    username: 'feroz_beg6248', 
-    password: 'vPsalon-fb@123456', 
-    name: 'Feroz Beg', 
-    role: 'owner' 
-  },
-  { 
-    username: 'humaira-hafiz', 
-    password: 'vp-humaira-882', 
-    name: 'Humaira Hafiz', 
-    role: 'manager', 
-    branchId: 'chandni' 
-  },
-  { 
-    username: 'rakshita-new', 
-    password: 'rak-oxy-8422', 
-    name: 'Rakshita', 
-    role: 'manager', 
-    branchId: 'new-market' 
-  },
+  }
 ];
 
 export interface Appointment {
@@ -56,4 +34,5 @@ export interface Appointment {
   status: 'booked' | 'completed' | 'rescheduled' | 'cancelled';
   price: number;
 }
+
 

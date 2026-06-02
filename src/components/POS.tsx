@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Search, 
   Plus, 
@@ -14,10 +14,17 @@ import {
   QrCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { supabase } from '../lib/supabase';
-import { services, customers } from '../data/mockData';
+import { services } from '../data/mockData';
 
-export default function POS({ branchId }: { branchId: string }) {
+interface POSProps {
+  clients: any[];
+  setClients: React.Dispatch<React.SetStateAction<any[]>>;
+  staff: any[];
+  transactions: any[];
+  setTransactions: React.Dispatch<React.SetStateAction<any[]>>;
+}
+
+export default function POS({ clients, setClients, staff, transactions, setTransactions }: POSProps) {
   const [cart, setCart] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -25,23 +32,19 @@ export default function POS({ branchId }: { branchId: string }) {
   const [discountValue, setDiscountValue] = useState(0);
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [customersList, setCustomersList] = useState<any[]>(customers.filter(c => c.branchId === branchId));
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
   const [showSuccess, setShowSuccess] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
   const [redeemedPoints, setRedeemedPoints] = useState(0);
   const [showQRModal, setShowQRModal] = useState(false);
-  const [visitStatus, setVisitStatus] = useState('');
-
-  useEffect(() => {
-    setCustomersList(customers.filter(c => c.branchId === branchId));
-  }, [branchId]);
-
+  
+  // Selected staff IDs for incentives split
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [serviceSearch, setServiceSearch] = useState('');
+  const [posTab, setPosTab] = useState<'services' | 'cart'>('services');
 
-  const branchServices = services.filter(s => s.branchId === branchId);
-  const categories = ['All', ...new Set(branchServices.map(s => s.category))];
+  const categories = ['All', ...new Set(services.map(s => s.category))];
 
   const addToCart = (service: any) => {
     setCart([...cart, { ...service, cartId: Math.random().toString(36).substr(2, 9) }]);
@@ -66,12 +69,59 @@ export default function POS({ branchId }: { branchId: string }) {
     setCustomerSearch('');
   };
 
-  const filteredCustomers = customersList.filter(c => 
+  const filteredCustomers = clients.filter(c => 
     c.name.toLowerCase().includes(customerSearch.toLowerCase()) || 
     c.phone.includes(customerSearch)
   );
 
   const finalizePayment = async () => {
+    const selectedStaffDetails = staff.filter(s => selectedStaffIds.includes(s.id));
+    const contributingStaffNames = selectedStaffDetails.map(s => s.name).join(', ');
+    const incentiveAmount = selectedStaffDetails.length > 0 ? (total * 0.05) / selectedStaffDetails.length : 0;
+
+    // Save transaction
+    const newTransaction = {
+      id: `TX-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+      date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+      timestamp: new Date().toISOString(),
+      clientName: selectedCustomer ? selectedCustomer.name : 'Walk-in Customer',
+      phone: selectedCustomer ? selectedCustomer.phone : 'N/A',
+      services: cart.map(item => item.name).join(', '),
+      total: total,
+      paymentMethod: selectedPaymentMethod || 'Cash',
+      staffIds: selectedStaffIds,
+      staffNames: contributingStaffNames || 'None',
+      incentivePerStaff: incentiveAmount
+    };
+
+    setTransactions(prev => [newTransaction, ...prev]);
+
+    // Update staff statistics in the local state
+    if (selectedStaffIds.length > 0) {
+      setClients(prevClients => prevClients); // Trick to trigger sync/updates
+    }
+
+    // Update customer stats (visits, loyalty points, spent)
+    if (selectedCustomer) {
+      setClients(prevClients => prevClients.map(client => {
+        if (client.id === selectedCustomer.id) {
+          const newVisits = (client.visits || 0) + 1;
+          const newSpent = (client.totalSpent || 0) + total;
+          // earn 10% points on total bill
+          const earnedPoints = Math.round(total * 0.1);
+          const newPoints = (client.points || 0) + earnedPoints - redeemedPoints;
+          return {
+            ...client,
+            visits: newVisits,
+            totalSpent: newSpent,
+            points: newPoints,
+            lastVisit: new Date().toISOString().split('T')[0]
+          };
+        }
+        return client;
+      }));
+    }
+
     // Trigger MSG91 WhatsApp Automation
     if (selectedCustomer) {
       const servicesList = cart.map(item => item.name).join(', ');
@@ -132,35 +182,6 @@ export default function POS({ branchId }: { branchId: string }) {
       }
     }
 
-    const simulateVisit = async (name: string) => {
-      setVisitStatus(`Processing visit for ${name}...`);
-      
-      // Trigger WhatsApp Automation via MSG91
-      try {
-        await fetch('/api/automation/trigger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'appointment_confirmed',
-            customer: { name, phone: '917439784129' }, // Using your number for demo testing
-            template_id: 'appointment_confirmed_wa_text_v1',
-            variables: [
-              new Date().toLocaleString(),
-              "Haircut & Styling",
-              "917439784129"
-            ]
-          })
-        });
-        setVisitStatus(`Successfully confirmed appointment for ${name}!`);
-      } catch (e) {
-        setVisitStatus(`Visit recorded for ${name}`);
-      }
-
-      setTimeout(() => {
-        setVisitStatus('');
-      }, 3000);
-    };
-
     setShowQRModal(false);
     setShowSuccess(true);
     setTimeout(() => {
@@ -172,6 +193,7 @@ export default function POS({ branchId }: { branchId: string }) {
       setDiscountValue(0);
       setRedeemedPoints(0);
       setSelectedPaymentMethod(null);
+      setSelectedStaffIds([]);
     }, 3000);
   };
 
@@ -193,19 +215,45 @@ export default function POS({ branchId }: { branchId: string }) {
       initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
       transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.6 }}
-      className="h-full flex gap-8 pb-8"
+      className="h-[calc(100vh-11rem)] md:h-[calc(100vh-9rem)] flex flex-col md:flex-row gap-4 md:gap-8 overflow-hidden pb-4"
     >
+      {/* Mobile Tab Switcher */}
+      <div className="flex md:hidden bg-surface border border-border p-1 rounded-2xl gap-1 w-full flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => setPosTab('services')}
+          className={`flex-1 py-3 text-center text-xs font-bold rounded-xl transition-all ${
+            posTab === 'services' 
+              ? 'bg-accent text-white' 
+              : 'text-muted hover:text-white'
+          }`}
+        >
+          Services ({services.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setPosTab('cart')}
+          className={`flex-1 py-3 text-center text-xs font-bold rounded-xl transition-all ${
+            posTab === 'cart' 
+              ? 'bg-accent text-white' 
+              : 'text-muted hover:text-white'
+          }`}
+        >
+          Cart ({cart.length})
+        </button>
+      </div>
+
       {/* Services Grid */}
-      <div className="flex-1 space-y-8">
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
+      <div className={`flex-1 flex flex-col overflow-hidden space-y-6 ${posTab === 'services' ? 'flex' : 'hidden md:flex'}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-shrink-0">
+          <div className="flex gap-2 overflow-x-auto pb-1.5 custom-scrollbar">
             {categories.map(cat => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all shrink-0 ${
                   selectedCategory === cat 
-                    ? 'bg-accent text-black' 
+                    ? 'bg-accent text-white border border-accent' 
                     : 'bg-surface border border-border text-muted hover:text-white'
                 }`}
               >
@@ -213,7 +261,7 @@ export default function POS({ branchId }: { branchId: string }) {
               </button>
             ))}
           </div>
-          <div className="relative w-64">
+          <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
             <input 
               type="text" 
@@ -225,8 +273,8 @@ export default function POS({ branchId }: { branchId: string }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto custom-scrollbar pb-8">
-          {branchServices
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto custom-scrollbar pb-8">
+          {services
             .filter(s => (selectedCategory === 'All' || s.category === selectedCategory) && 
                          s.name.toLowerCase().includes(serviceSearch.toLowerCase()))
             .map(service => (
@@ -238,7 +286,7 @@ export default function POS({ branchId }: { branchId: string }) {
                 className="glass p-6 rounded-[2rem] text-left hover:border-accent/30 hover:shadow-xl transition-all duration-300 group"
               >
                 <div className="flex justify-between items-start mb-4">
-                  <div className="p-3 bg-surface rounded-2xl text-accent group-hover:bg-accent group-hover:text-black transition-all">
+                  <div className="p-3 bg-surface rounded-2xl text-accent group-hover:bg-accent group-hover:text-white transition-all">
                     <Plus size={20} />
                   </div>
                   <span className="text-xs font-bold uppercase tracking-widest text-muted">{service.category}</span>
@@ -251,8 +299,8 @@ export default function POS({ branchId }: { branchId: string }) {
       </div>
 
       {/* Cart Sidebar */}
-      <div className="w-[400px] glass rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
-        <div className="p-6 border-b border-border">
+      <div className={`w-full md:w-[400px] glass rounded-[2rem] md:rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl h-full ${posTab === 'cart' ? 'flex' : 'hidden md:flex'}`}>
+        <div className="p-6 border-b border-border flex-shrink-0">
           <h3 className="text-xl font-bold mb-4">Current Order</h3>
           
           {/* Customer Selection */}
@@ -271,7 +319,8 @@ export default function POS({ branchId }: { branchId: string }) {
                 </div>
                 <button 
                   onClick={() => setShowCustomerForm(true)}
-                  className="p-2 bg-surface border border-border rounded-xl text-accent hover:bg-accent hover:text-black transition-all"
+                  className="p-2 bg-surface border border-border rounded-xl text-accent hover:bg-accent hover:text-white transition-all"
+                  title="Add New Customer"
                 >
                   <UserPlus size={20} />
                 </button>
@@ -289,16 +338,19 @@ export default function POS({ branchId }: { branchId: string }) {
                         <p className="font-bold text-sm">{c.name}</p>
                         <p className="text-[10px] text-muted">{c.phone}</p>
                       </div>
-                      <span className="text-[10px] bg-accent/10 text-accent px-2 py-1 rounded-full">{c.points} pts</span>
+                      <span className="text-[10px] bg-accent/10 text-accent px-2 py-1 rounded-full">{c.points || 0} pts</span>
                     </button>
                   ))}
+                  {filteredCustomers.length === 0 && (
+                    <div className="p-3 text-sm text-muted text-center">No customers found</div>
+                  )}
                 </div>
               )}
             </div>
           ) : (
             <div className="bg-accent/10 border border-accent/20 rounded-2xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-black font-bold">
+                <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-white font-bold">
                   {selectedCustomer.name[0]}
                 </div>
                 <div>
@@ -314,6 +366,38 @@ export default function POS({ branchId }: { branchId: string }) {
               </button>
             </div>
           )}
+
+          {/* Contributing Staff Multi-Select */}
+          <div className="space-y-2 mt-4 pt-4 border-t border-border">
+            <label className="text-xs font-bold uppercase tracking-widest text-muted block">Contributing Staff</label>
+            {staff.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {staff.map(member => {
+                  const isSelected = selectedStaffIds.includes(member.id);
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStaffIds(prev => 
+                          isSelected ? prev.filter(id => id !== member.id) : [...prev, member.id]
+                        );
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                        isSelected 
+                          ? 'bg-accent text-white border-accent' 
+                          : 'bg-surface border-border text-muted hover:text-white hover:border-accent/30'
+                      }`}
+                    >
+                      {member.name}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted italic">Add staff members in the Staff Tracking tab to choose contributors.</p>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
@@ -347,7 +431,7 @@ export default function POS({ branchId }: { branchId: string }) {
           )}
         </div>
 
-        <div className="p-6 bg-surface border-t border-border space-y-4">
+        <div className="p-6 bg-surface border-t border-border space-y-4 flex-shrink-0">
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted">Subtotal</span>
@@ -361,13 +445,13 @@ export default function POS({ branchId }: { branchId: string }) {
                 <div className="flex gap-1">
                   <button 
                     onClick={() => setDiscountType(discountType === 'percent' ? 'none' : 'percent')}
-                    className={`p-1.5 rounded-lg border transition-all ${discountType === 'percent' ? 'bg-accent border-accent text-black' : 'border-border text-muted'}`}
+                    className={`p-1.5 rounded-lg border transition-all ${discountType === 'percent' ? 'bg-accent border-accent text-white' : 'border-border text-muted'}`}
                   >
                     <Percent size={14} />
                   </button>
                   <button 
                     onClick={() => setDiscountType(discountType === 'fixed' ? 'none' : 'fixed')}
-                    className={`p-1.5 rounded-lg border transition-all ${discountType === 'fixed' ? 'bg-accent border-accent text-black' : 'border-border text-muted'}`}
+                    className={`p-1.5 rounded-lg border transition-all ${discountType === 'fixed' ? 'bg-accent border-accent text-white' : 'border-border text-muted'}`}
                   >
                     <Tag size={14} />
                   </button>
@@ -420,8 +504,14 @@ export default function POS({ branchId }: { branchId: string }) {
           </div>
           <button 
             disabled={cart.length === 0}
-            onClick={() => setIsCheckoutOpen(true)}
-            className="w-full bg-accent text-accent-foreground py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-accent/20"
+            onClick={() => {
+              if (selectedStaffIds.length === 0) {
+                alert('Please select at least one contributing staff member before checking out.');
+                return;
+              }
+              setIsCheckoutOpen(true);
+            }}
+            className="w-full bg-accent text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-accent/20"
           >
             Checkout
           </button>
@@ -450,7 +540,7 @@ export default function POS({ branchId }: { branchId: string }) {
                 <p className="text-muted">Select payment method for ₹{total}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <PaymentMethod 
                   icon={Banknote} 
                   label="Cash" 
@@ -469,18 +559,12 @@ export default function POS({ branchId }: { branchId: string }) {
                   selected={selectedPaymentMethod === 'UPI'} 
                   onClick={() => setSelectedPaymentMethod('UPI')} 
                 />
-                <PaymentMethod 
-                  icon={Star} 
-                  label="Points" 
-                  selected={selectedPaymentMethod === 'Points'} 
-                  onClick={() => setSelectedPaymentMethod('Points')} 
-                />
               </div>
 
               <div className="space-y-4">
                 <button 
                   onClick={handleCompletePayment}
-                  className="w-full bg-accent text-black py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all"
+                  className="w-full bg-accent text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all"
                 >
                   Confirm Payment
                 </button>
@@ -517,7 +601,6 @@ export default function POS({ branchId }: { branchId: string }) {
                 <p className="text-muted">Pay ₹{total} via UPI</p>
               </div>
 
-              {/* QR Code Placeholder Box */}
               <div className="w-48 h-48 bg-white rounded-2xl p-4 flex items-center justify-center relative overflow-hidden">
                 <div className="absolute inset-0 border-4 border-accent/50 rounded-2xl animate-pulse pointer-events-none"></div>
                 <QrCode size={120} className="text-black" />
@@ -586,13 +669,26 @@ export default function POS({ branchId }: { branchId: string }) {
               <div className="flex gap-4 pt-4">
                 <button 
                   onClick={() => {
-                    const customer = { ...newCustomer, id: Math.random().toString(), points: 0 };
-                    setCustomersList([...customersList, customer]);
+                    if (!newCustomer.name || !newCustomer.phone) {
+                      alert('Please enter Name and Phone Number');
+                      return;
+                    }
+                    const customer = { 
+                      id: `CL-${Math.random().toString(36).substring(2, 9).toUpperCase()}`, 
+                      name: newCustomer.name, 
+                      phone: newCustomer.phone,
+                      points: 0,
+                      visits: 0,
+                      totalSpent: 0,
+                      lastVisit: 'N/A',
+                      frequent: []
+                    };
+                    setClients(prev => [...prev, customer]);
                     setSelectedCustomer(customer);
                     setShowCustomerForm(false);
                     setNewCustomer({ name: '', phone: '' });
                   }}
-                  className="flex-1 bg-accent text-black py-3 rounded-xl font-bold hover:opacity-90 transition-all"
+                  className="flex-1 bg-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-all"
                 >
                   Add Customer
                 </button>
@@ -622,16 +718,13 @@ export default function POS({ branchId }: { branchId: string }) {
               animate={{ scale: 1, opacity: 1 }}
               className="glass p-12 rounded-[40px] flex flex-col items-center text-center space-y-6"
             >
-              <div className="w-24 h-24 bg-accent rounded-full flex items-center justify-center text-black">
+              <div className="w-24 h-24 bg-accent rounded-full flex items-center justify-center text-white">
                 <CheckCircle2 size={48} />
               </div>
               <div>
                 <h2 className="text-3xl font-bold">Payment Successful</h2>
-                <p className="text-muted mt-2">Transaction ID: #AION-88291</p>
+                <p className="text-muted mt-2">Transaction completed</p>
               </div>
-              <button className="bg-white text-black px-8 py-3 rounded-full font-bold">
-                Print Receipt
-              </button>
             </motion.div>
           </motion.div>
         )}

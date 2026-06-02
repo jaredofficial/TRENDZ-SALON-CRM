@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import dotenv from "dotenv";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
@@ -243,6 +244,66 @@ async function startServer() {
     }
 
     res.json({ success: true, message: "Automation triggered" });
+  });
+
+  // API: Generate Gemini AI Performance Summary Report
+  app.post("/api/ai/report", async (req, res) => {
+    const { stats, transactions, clients, staff } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+      // Sandbox fallback report
+      const mockReport = `> [!NOTE]
+> **Demo Sandbox Mode Active**: Add a valid \`GEMINI_API_KEY\` to your \`.env\` file to activate live real-time analysis from Gemini.
+
+# Executive Performance Summary — Trendz Salon
+
+## ## Overview & Insights
+Currently operating in demonstration mode with mock statistics. Based on the loaded business records:
+- **Total Revenue**: INR ${stats.monthly || 0} this month (Goal progress: ${Math.round(((stats.monthly || 0) / 500000) * 100)}% of INR 5.0L target).
+- **Client Base**: **${clients?.length || 0}** registered profiles with a **${stats.retention || 0}%** client retention rate.
+- **Average Ticket Value (ATV)**: INR **${stats.atv || 0}** per customer checkout.
+
+## ## Staff Performance & Incentives
+- **Team Size**: **${staff?.length || 0}** active contributors.
+- **Incentive Allocation**: 5% incentive model splits earnings proportionally among service contributors, driving higher average order sizes and motivation.
+
+## ## Strategic Recommendations
+1. **Target Repeat Visits**: Push personalized loyalty point reminders to the **${clients?.length || 0}** registered clients to boost repeat visit frequency.
+2. **Upsell High-Value Packages**: With an ATV of INR **${stats.atv || 0}**, run campaigns promoting Facials and Hair Coloring packages to increase service checkout value.
+3. **Optimize Staff Load**: Review staff contributions to identify peak booking hours and adjust shift allocations.`;
+      return res.json({ success: true, report: mockReport });
+    }
+
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `
+You are the Executive Business Analyst AI for "Trendz Salon".
+Analyze the following current salon performance data and provide a detailed, highly professional executive summary, business insights, staff performance highlights, and 3 strategic recommendations.
+
+Salon Data:
+- Daily Revenue: INR ${stats.daily}
+- Weekly Revenue: INR ${stats.weekly}
+- Monthly Revenue: INR ${stats.monthly}
+- Yearly Revenue: INR ${stats.yearly}
+- Retention Rate: ${stats.retention}%
+- Average Ticket Value (ATV): INR ${stats.atv}
+- Total Transactions: ${transactions?.length || 0}
+- Total Registered Clients: ${clients?.length || 0}
+- Total Staff Members: ${staff?.length || 0}
+
+Format the report beautifully in Markdown. Use headers (## for main sections, ### for sub-sections), lists (- for bullet points), and bold text (**highlight**) for emphasis. Keep the tone inspiring, strategic, and professional. Do NOT include html tags or raw json.
+`;
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt
+      });
+
+      res.json({ success: true, report: response.text });
+    } catch (error: any) {
+      console.error("Gemini AI API Error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Vite middleware for development

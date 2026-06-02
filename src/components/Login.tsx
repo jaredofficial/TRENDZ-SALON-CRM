@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Lock, User, Scissors, AlertCircle } from 'lucide-react';
+import { Lock, User, AlertCircle } from 'lucide-react';
 import { users } from '../types';
+import logoUrl from '../logo.png';
 
 interface LoginProps {
   onLogin: (user: any) => void;
@@ -35,22 +36,22 @@ export default function Login({ onLogin }: LoginProps) {
       {/* Background Elements */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-accent/10 rounded-full blur-[120px]"></div>
-        <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[120px]"></div>
+        <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-accent/10 rounded-full blur-[120px]"></div>
       </div>
 
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md relative z-10"
-      >
-        <div className="glass rounded-[3rem] p-10 space-y-8 border border-white/10">
-          <div className="text-center space-y-2">
-            <div className="w-20 h-20 bg-accent rounded-3xl flex items-center justify-center text-black mx-auto mb-6 shadow-2xl shadow-accent/20">
-              <Scissors size={40} />
-            </div>
-            <h1 className="text-4xl font-bold tracking-tight">Aion Salon</h1>
-            <p className="text-muted">Enter your credentials to access the CRM</p>
-          </div>
+         initial={{ opacity: 0, y: 20 }}
+         animate={{ opacity: 1, y: 0 }}
+         className="w-full max-w-md relative z-10"
+       >
+         <div className="glass rounded-[3rem] p-10 space-y-8 border border-white/10">
+           <div className="text-center space-y-2">
+             <div className="w-32 h-32 mx-auto mb-4 flex items-center justify-center">
+               <img src={logoUrl} alt="Trendz Salon Logo" className="w-full h-full object-contain" />
+             </div>
+             <h1 className="text-4xl font-bold tracking-tight">Trendz Salon</h1>
+             <p className="text-muted">Enter your credentials to access the CRM</p>
+           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
