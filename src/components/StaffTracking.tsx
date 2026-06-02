@@ -29,7 +29,7 @@ export default function StaffTracking({ staff, setStaff, transactions }: StaffTr
   const [searchTerm, setSearchTerm] = useState('');
   const [newStaff, setNewStaff] = useState({
     name: '',
-    phone: '',
+    phone: '+91',
     role: '',
     email: '',
     instagram: ''
@@ -315,18 +315,28 @@ export default function StaffTracking({ staff, setStaff, transactions }: StaffTr
                       alert('Please enter Name and Role');
                       return;
                     }
+                    const formatPhoneNumber = (ph: string) => {
+                      const trimmed = ph.trim();
+                      if (!trimmed) return '+91';
+                      const digits = trimmed.replace(/[\s-()]/g, '');
+                      if (/^\d{10}$/.test(digits)) return `+91${digits}`;
+                      if (/^91\d{10}$/.test(digits)) return `+${digits}`;
+                      if (/^\d+$/.test(digits)) return `+91${digits}`;
+                      return trimmed;
+                    };
+                    const formattedPhone = formatPhoneNumber(newStaff.phone);
                     const newMember = {
                       id: `ST-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
                       name: newStaff.name,
                       role: newStaff.role,
-                      phone: newStaff.phone || 'N/A',
+                      phone: formattedPhone || 'N/A',
                       email: newStaff.email || 'N/A',
                       instagram: newStaff.instagram || 'N/A',
                     };
                     setStaff(prev => [...prev, newMember]);
                     alert('Staff member added successfully!');
                     setIsAddModalOpen(false);
-                    setNewStaff({ name: '', phone: '', role: '', email: '', instagram: '' });
+                    setNewStaff({ name: '', phone: '+91', role: '', email: '', instagram: '' });
                   }}
                   className="flex-1 bg-accent text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all"
                 >

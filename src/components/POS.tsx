@@ -33,7 +33,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
+  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '+91' });
   const [showSuccess, setShowSuccess] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
   const [redeemedPoints, setRedeemedPoints] = useState(0);
@@ -673,10 +673,20 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
                       alert('Please enter Name and Phone Number');
                       return;
                     }
+                    const formatPhoneNumber = (ph: string) => {
+                      const trimmed = ph.trim();
+                      if (!trimmed) return '+91';
+                      const digits = trimmed.replace(/[\s-()]/g, '');
+                      if (/^\d{10}$/.test(digits)) return `+91${digits}`;
+                      if (/^91\d{10}$/.test(digits)) return `+${digits}`;
+                      if (/^\d+$/.test(digits)) return `+91${digits}`;
+                      return trimmed;
+                    };
+                    const formattedPhone = formatPhoneNumber(newCustomer.phone);
                     const customer = { 
                       id: `CL-${Math.random().toString(36).substring(2, 9).toUpperCase()}`, 
                       name: newCustomer.name, 
-                      phone: newCustomer.phone,
+                      phone: formattedPhone,
                       points: 0,
                       visits: 0,
                       totalSpent: 0,
@@ -686,7 +696,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
                     setClients(prev => [...prev, customer]);
                     setSelectedCustomer(customer);
                     setShowCustomerForm(false);
-                    setNewCustomer({ name: '', phone: '' });
+                    setNewCustomer({ name: '', phone: '+91' });
                   }}
                   className="flex-1 bg-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-all"
                 >

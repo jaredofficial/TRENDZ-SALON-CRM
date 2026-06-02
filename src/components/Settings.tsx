@@ -4,9 +4,11 @@ import {
   QrCode, 
   Save,
   CheckCircle2,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { supabase } from '../lib/supabase';
 
 interface SettingsProps {
   settings: any;
@@ -16,6 +18,37 @@ interface SettingsProps {
 export default function Settings({ settings, setSettings }: SettingsProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+
+  const handleResetDatabase = async () => {
+    if (!confirm("Are you sure you want to delete all clients, staff, appointments, and transactions? This cannot be undone.")) {
+      return;
+    }
+    
+    // Clear local storage
+    localStorage.removeItem('trendz_clients');
+    localStorage.removeItem('trendz_staff');
+    localStorage.removeItem('trendz_appointments');
+    localStorage.removeItem('trendz_transactions');
+    localStorage.removeItem('trendz_settings');
+    
+    // Attempt to delete remote Supabase rows
+    try {
+      const { error: err1 } = await supabase.from('appointments').delete().neq('id', '');
+      const { error: err2 } = await supabase.from('transactions').delete().neq('id', '');
+      const { error: err3 } = await supabase.from('clients').delete().neq('id', '');
+      const { error: err4 } = await supabase.from('staff').delete().neq('id', '');
+      
+      if (err1 || err2 || err3 || err4) {
+        alert("Local data cleared! (Note: Remote Supabase database might need dashboard access to clear depending on RLS rules).");
+      } else {
+        alert("All local and remote data successfully cleared!");
+      }
+    } catch (e) {
+      alert("Local data cleared successfully!");
+    }
+    
+    window.location.reload();
+  };
 
   const handleSave = () => {
     setIsSaving(true);
@@ -106,6 +139,24 @@ export default function Settings({ settings, setSettings }: SettingsProps) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Danger Zone Card */}
+      <div className="glass rounded-[2rem] p-8 space-y-6 border border-red-500/20 bg-red-500/5">
+        <h3 className="text-xl font-bold flex items-center gap-2 text-red-500">
+          <Trash2 className="text-red-500" size={24} />
+          Danger Zone
+        </h3>
+        <p className="text-xs text-muted leading-relaxed">
+          Wipe all records including clients, staff, appointments, and checkout transactions. This will clear both your browser storage and attempt to clear connected Supabase tables.
+        </p>
+        <button 
+          type="button"
+          onClick={handleResetDatabase}
+          className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl text-xs transition-all shadow-lg shadow-red-600/20"
+        >
+          Reset All Salon Data
+        </button>
       </div>
     </motion.div>
   );

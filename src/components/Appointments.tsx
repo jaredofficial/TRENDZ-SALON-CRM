@@ -37,7 +37,7 @@ export default function Appointments({ appointments, setAppointments, clients = 
   // Book Form State
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<any>(null);
-  const [customPhone, setCustomPhone] = useState('');
+  const [customPhone, setCustomPhone] = useState('+91');
   const [bookDate, setBookDate] = useState('');
   const [bookTime, setBookTime] = useState('10:00 AM');
   const [selectedServices, setSelectedServices] = useState<string[]>(['1']);
@@ -136,9 +136,19 @@ export default function Appointments({ appointments, setAppointments, clients = 
     const serviceNames = selectedServiceObjs.map(s => s.name).join(', ');
     const totalPrice = selectedServiceObjs.reduce((sum, s) => sum + s.price, 0);
 
+    const formatPhoneNumber = (ph: string) => {
+      const trimmed = ph.trim();
+      if (!trimmed) return '+91';
+      const digits = trimmed.replace(/[\s-()]/g, '');
+      if (/^\d{10}$/.test(digits)) return `+91${digits}`;
+      if (/^91\d{10}$/.test(digits)) return `+${digits}`;
+      if (/^\d+$/.test(digits)) return `+91${digits}`;
+      return trimmed;
+    };
     const clientName = selectedClient ? selectedClient.name : clientSearch;
     const clientPhone = selectedClient ? selectedClient.phone : customPhone;
-    const finalPhone = clientPhone || '+91 99999 99999';
+    const formattedPhone = formatPhoneNumber(clientPhone);
+    const finalPhone = formattedPhone || '+91 99999 99999';
     const finalDate = bookDate || formatDateString(new Date());
 
     const newAppt: Appointment = {
@@ -198,7 +208,7 @@ export default function Appointments({ appointments, setAppointments, clients = 
     // Reset Form
     setClientSearch('');
     setSelectedClient(null);
-    setCustomPhone('');
+    setCustomPhone('+91');
     setBookDate('');
     setBookTime('10:00 AM');
     setSelectedServices(['1']);
