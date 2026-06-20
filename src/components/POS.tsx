@@ -11,10 +11,13 @@ import {
   Tag,
   UserPlus,
   CheckCircle2,
-  QrCode
+  QrCode,
+  Scissors,
+  Wind,
+  Droplets,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { services } from '../data/mockData';
 
 interface POSProps {
   clients: any[];
@@ -22,9 +25,11 @@ interface POSProps {
   staff: any[];
   transactions: any[];
   setTransactions: React.Dispatch<React.SetStateAction<any[]>>;
+  services: any[];
+  setServices: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
-export default function POS({ clients, setClients, staff, transactions, setTransactions }: POSProps) {
+export default function POS({ clients, setClients, staff, transactions, setTransactions, services, setServices }: POSProps) {
   const [cart, setCart] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -44,10 +49,65 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const [serviceSearch, setServiceSearch] = useState('');
   const [posTab, setPosTab] = useState<'services' | 'cart'>('services');
 
-  const categories = ['All', ...new Set(services.map(s => s.category))];
+  const [isAddServiceOpen, setIsAddServiceOpen] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServicePrice, setNewServicePrice] = useState('');
+  const [newServiceCategory, setNewServiceCategory] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
+
+  const categories = ['All', ...new Set(services.map((s: any) => s.category))] as string[];
+  const existingCategories = Array.from(new Set(services.filter((s: any) => !s.isPackage).map((s: any) => s.category))) as string[];
+
+  const handleAddService = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newServiceName || !newServicePrice) return;
+
+    const finalCategory = newServiceCategory === 'custom' ? customCategory.trim() : newServiceCategory;
+    if (!finalCategory) {
+      alert('Please specify a category');
+      return;
+    }
+
+    const getIconByCategory = (cat: string) => {
+      const lower = cat.toLowerCase();
+      if (lower.includes('hair')) return Scissors;
+      if (lower.includes('nail') || lower.includes('pedi') || lower.includes('mani')) return Wind;
+      if (lower.includes('color')) return Droplets;
+      return Sparkles;
+    };
+
+    const newServiceObj = {
+      id: `SRV-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+      name: newServiceName,
+      price: Number(newServicePrice),
+      category: finalCategory,
+      icon: getIconByCategory(finalCategory)
+    };
+
+    setServices((prev: any[]) => [...prev, newServiceObj]);
+    alert('Service added successfully!');
+    
+    setNewServiceName('');
+    setNewServicePrice('');
+    setNewServiceCategory('');
+    setCustomCategory('');
+    setIsAddServiceOpen(false);
+  };
 
   const addToCart = (service: any) => {
-    setCart([...cart, { ...service, cartId: Math.random().toString(36).substr(2, 9) }]);
+    setCart([
+      ...cart, 
+      { 
+        ...service, 
+        cartId: Math.random().toString(36).substr(2, 9),
+        packageStaff: service.isPackage
+          ? service.packageServices.reduce((acc: any, sub: any) => {
+              acc[sub.name] = [];
+              return acc;
+            }, {})
+          : undefined
+      }
+    ]);
   };
 
   const removeFromCart = (cartId: string) => {
@@ -75,9 +135,65 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   );
 
   const finalizePayment = async () => {
-    const selectedStaffDetails = staff.filter(s => selectedStaffIds.includes(s.id));
+    // Collect unique staff IDs across all items in the cart
+    const packageStaffIds = cart.flatMap(item => 
+      item.isPackage ? Object.values(item.packageStaff || {}).flat() as string[] : []
+    );
+    const regularStaffIds = cart.some(item => !item.isPackage) ? selectedStaffIds : [];
+    const uniqueStaffIds = Array.from(new Set([...packageStaffIds, ...regularStaffIds]));
+    const selectedStaffDetails = staff.filter(s => uniqueStaffIds.includes(s.id));
     const contributingStaffNames = selectedStaffDetails.map(s => s.name).join(', ');
-    const incentiveAmount = selectedStaffDetails.length > 0 ? (total * 0.05) / selectedStaffDetails.length : 0;
+
+    // Calculate specific incentives and revenue share per staff member
+    const staffIncentives: Record<string, number> = {};
+    const staffRevenueShare: Record<string, number> = {};
+
+    cart.forEach(item => {
+      if (item.isPackage) {
+        // Proportional package price share in the total transaction amount (after discounts/redeemed points)
+        const packageTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
+        
+        // Sum of sub-service original prices to distribute revenue proportionally
+        const subServicesSum = item.packageServices ? item.packageServices.reduce((sum: number, sub: any) => sum + sub.price, 0) : 0;
+
+        if (item.packageServices) {
+          item.packageServices.forEach((sub: any) => {
+            const assignedIds = item.packageStaff?.[sub.name] || [];
+            if (assignedIds.length > 0) {
+              // 5% incentive on the original sub-service price, split among contributors
+              const incentiveSplit = (sub.price * 0.05) / assignedIds.length;
+              
+              // Revenue share of this sub-service based on the package total share
+              const subServiceRevenue = subServicesSum > 0 ? (sub.price / subServicesSum) * packageTotalShare : 0;
+              const revenueSplit = subServiceRevenue / assignedIds.length;
+
+              assignedIds.forEach((id: string) => {
+                staffIncentives[id] = (staffIncentives[id] || 0) + incentiveSplit;
+                staffRevenueShare[id] = (staffRevenueShare[id] || 0) + revenueSplit;
+              });
+            }
+          });
+        }
+      } else {
+        // Regular service item: uses global selectedStaffIds
+        const regularItemTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
+        
+        if (selectedStaffIds.length > 0) {
+          const incentiveSplit = (item.price * 0.05) / selectedStaffIds.length;
+          const revenueSplit = regularItemTotalShare / selectedStaffIds.length;
+
+          selectedStaffIds.forEach(id => {
+            staffIncentives[id] = (staffIncentives[id] || 0) + incentiveSplit;
+            staffRevenueShare[id] = (staffRevenueShare[id] || 0) + revenueSplit;
+          });
+        }
+      }
+    });
+
+    // Compute average incentive for backward compatibility
+    const incentiveAmount = uniqueStaffIds.length > 0 
+      ? Object.values(staffIncentives).reduce((sum, val) => sum + val, 0) / uniqueStaffIds.length
+      : 0;
 
     // Save transaction
     const newTransaction = {
@@ -89,15 +205,17 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
       services: cart.map(item => item.name).join(', '),
       total: total,
       paymentMethod: selectedPaymentMethod || 'Cash',
-      staffIds: selectedStaffIds,
+      staffIds: uniqueStaffIds,
       staffNames: contributingStaffNames || 'None',
-      incentivePerStaff: incentiveAmount
+      incentivePerStaff: incentiveAmount,
+      staffIncentives,
+      staffRevenueShare
     };
 
     setTransactions(prev => [newTransaction, ...prev]);
 
     // Update staff statistics in the local state
-    if (selectedStaffIds.length > 0) {
+    if (uniqueStaffIds.length > 0) {
       setClients(prevClients => prevClients); // Trick to trigger sync/updates
     }
 
@@ -115,7 +233,9 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
             visits: newVisits,
             totalSpent: newSpent,
             points: newPoints,
-            lastVisit: new Date().toISOString().split('T')[0]
+            lastVisit: new Date().toISOString().split('T')[0],
+            last30DayReminderCycle: 'pending',
+            last60DayReminderCycle: 'pending'
           };
         }
         return client;
@@ -173,8 +293,10 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
             customer: selectedCustomer,
             template_id: 'appointment_follow_up_upsell',
             variables: [
+              "0",
               servicesList
             ]
+
           })
         });
       } catch (e) {
@@ -261,15 +383,25 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
               </button>
             ))}
           </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
-            <input 
-              type="text" 
-              value={serviceSearch}
-              onChange={(e) => setServiceSearch(e.target.value)}
-              placeholder="Search services..." 
-              className="w-full bg-surface/50 border border-border rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent/50 transition-all"
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
+              <input 
+                type="text" 
+                value={serviceSearch}
+                onChange={(e) => setServiceSearch(e.target.value)}
+                placeholder="Search services..." 
+                className="w-full bg-surface/50 border border-border rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent/50 transition-all"
+              />
+            </div>
+            <button 
+              type="button"
+              onClick={() => setIsAddServiceOpen(true)}
+              className="p-2.5 bg-surface border border-border rounded-xl text-accent hover:bg-accent hover:text-white transition-all flex-shrink-0"
+              title="Add New Service"
+            >
+              <Plus size={18} />
+            </button>
           </div>
         </div>
 
@@ -368,58 +500,119 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
           )}
 
           {/* Contributing Staff Multi-Select */}
-          <div className="space-y-2 mt-4 pt-4 border-t border-border">
-            <label className="text-xs font-bold uppercase tracking-widest text-muted block">Contributing Staff</label>
-            {staff.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {staff.map(member => {
-                  const isSelected = selectedStaffIds.includes(member.id);
-                  return (
-                    <button
-                      key={member.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedStaffIds(prev => 
-                          isSelected ? prev.filter(id => id !== member.id) : [...prev, member.id]
-                        );
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                        isSelected 
-                          ? 'bg-accent text-white border-accent' 
-                          : 'bg-surface border-border text-muted hover:text-white hover:border-accent/30'
-                      }`}
-                    >
-                      {member.name}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-muted italic">Add staff members in the Staff Tracking tab to choose contributors.</p>
-            )}
-          </div>
+          {cart.some(item => !item.isPackage) && (
+            <div className="space-y-2 mt-4 pt-4 border-t border-border">
+              <label className="text-xs font-bold uppercase tracking-widest text-muted block">Contributing Staff</label>
+              {staff.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {staff.map(member => {
+                    const isSelected = selectedStaffIds.includes(member.id);
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedStaffIds(prev => 
+                            isSelected ? prev.filter(id => id !== member.id) : [...prev, member.id]
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                          isSelected 
+                            ? 'bg-accent text-white border-accent' 
+                            : 'bg-surface border-border text-muted hover:text-white hover:border-accent/30'
+                        }`}
+                      >
+                        {member.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted italic">Add staff members in the Staff Tracking tab to choose contributors.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
           <AnimatePresence>
-            {cart.map((item) => (
-              <motion.div
+            {cart.map((item) => (               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 key={item.cartId}
-                className="flex items-center justify-between p-4 bg-surface rounded-2xl border border-border group"
+                className="flex flex-col p-4 bg-surface rounded-2xl border border-border group gap-3"
               >
-                <div>
-                  <p className="font-bold text-sm">{item.name}</p>
-                  <p className="text-xs text-accent">₹{item.price}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-sm">{item.name}</p>
+                    <p className="text-xs text-accent font-bold">₹{item.price}</p>
+                  </div>
+                  <button 
+                    onClick={() => removeFromCart(item.cartId)}
+                    className="p-2 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <Trash2 size={18} />
+                  </button>
                 </div>
-                <button 
-                  onClick={() => removeFromCart(item.cartId)}
-                  className="p-2 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                >
-                  <Trash2 size={18} />
-                </button>
+                
+                {/* Package Sub-Service Staff Assignment Badges */}
+                {item.isPackage && item.packageServices && (
+                  <div className="pt-3 border-t border-border/40 space-y-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Package Services Staff Assignment</p>
+                    {item.packageServices.map((sub: any) => {
+                      const assignedIds = item.packageStaff?.[sub.name] || [];
+                      return (
+                        <div key={sub.name} className="bg-background/40 p-3 rounded-xl border border-border/30">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs font-bold text-white">{sub.name}</span>
+                            <span className="text-[10px] text-muted font-bold">Valued at: ₹{sub.price}</span>
+                          </div>
+                          {staff.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {staff.map(member => {
+                                const isAssigned = assignedIds.includes(member.id);
+                                return (
+                                  <button
+                                    key={member.id}
+                                    type="button"
+                                    onClick={() => {
+                                      const currentStaffIds = assignedIds;
+                                      const newStaffIds = currentStaffIds.includes(member.id)
+                                        ? currentStaffIds.filter(id => id !== member.id)
+                                        : [...currentStaffIds, member.id];
+                                      
+                                      setCart(prev => prev.map(cartItem => 
+                                        cartItem.cartId === item.cartId 
+                                          ? {
+                                              ...cartItem,
+                                              packageStaff: {
+                                                ...cartItem.packageStaff,
+                                                [sub.name]: newStaffIds
+                                              }
+                                            }
+                                          : cartItem
+                                      ));
+                                    }}
+                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-bold transition-all border ${
+                                      isAssigned 
+                                        ? 'bg-accent text-white border-accent' 
+                                        : 'bg-background border-border text-muted hover:text-white hover:border-accent/30'
+                                    }`}
+                                  >
+                                    {member.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-[9px] text-muted italic">No staff found. Add staff in the Staff Tracking tab.</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </motion.div>
             ))}
           </AnimatePresence>
@@ -505,10 +698,28 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
           <button 
             disabled={cart.length === 0}
             onClick={() => {
-              if (selectedStaffIds.length === 0) {
-                alert('Please select at least one contributing staff member before checking out.');
+              const hasPackages = cart.some(item => item.isPackage);
+              const hasRegular = cart.some(item => !item.isPackage);
+
+              if (hasPackages) {
+                for (const item of cart) {
+                  if (item.isPackage && item.packageServices) {
+                    for (const sub of item.packageServices) {
+                      const assigned = item.packageStaff?.[sub.name] || [];
+                      if (assigned.length === 0) {
+                        alert(`Please assign at least one contributing staff member to the ${sub.name} service inside the ${item.name}.`);
+                        return;
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (hasRegular && selectedStaffIds.length === 0) {
+                alert('Please select at least one contributing staff member in the sidebar.');
                 return;
               }
+
               setIsCheckoutOpen(true);
             }}
             className="w-full bg-accent text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-accent/20"
@@ -709,6 +920,107 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
                   Cancel
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Add New Service Modal */}
+      <AnimatePresence>
+        {isAddServiceOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddServiceOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-sm glass rounded-[2rem] p-8 space-y-6"
+            >
+              <h3 className="text-xl font-bold">Add New Service</h3>
+              
+              <form onSubmit={handleAddService} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted block">Service Name</label>
+                  <input 
+                    type="text" 
+                    value={newServiceName}
+                    onChange={(e) => setNewServiceName(e.target.value)}
+                    placeholder="e.g., Keratin Hair Spa"
+                    className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 text-sm"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted block">Price (INR)</label>
+                  <input 
+                    type="number" 
+                    value={newServicePrice}
+                    onChange={(e) => setNewServicePrice(e.target.value)}
+                    placeholder="e.g., 1200"
+                    className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 text-sm"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted block">Category</label>
+                  <select
+                    value={newServiceCategory}
+                    onChange={(e) => setNewServiceCategory(e.target.value)}
+                    className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 text-sm"
+                    required
+                  >
+                    <option value="" className="bg-surface text-white">Select Category</option>
+                    {existingCategories.map(cat => (
+                      <option key={cat} value={cat} className="bg-surface text-white">{cat}</option>
+                    ))}
+                    <option value="custom" className="bg-surface text-accent font-bold">+ Create Custom Category</option>
+                  </select>
+                </div>
+
+                {newServiceCategory === 'custom' && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-muted block">Custom Category Name</label>
+                    <input 
+                      type="text" 
+                      value={customCategory}
+                      onChange={(e) => setCustomCategory(e.target.value)}
+                      placeholder="e.g., Spa"
+                      className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 text-sm"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    type="submit"
+                    className="flex-1 bg-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-all"
+                  >
+                    Add Service
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsAddServiceOpen(false);
+                      setNewServiceName('');
+                      setNewServicePrice('');
+                      setNewServiceCategory('');
+                      setCustomCategory('');
+                    }}
+                    className="flex-1 py-3 rounded-xl font-bold text-muted hover:text-white transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

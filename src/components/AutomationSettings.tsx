@@ -208,10 +208,21 @@ export default function AutomationSettings() {
             label="6. Upsell Follow-up" 
             sub="appointment_follow_up_upsell"
             onClick={() => triggerTest('checkout_upsell', 'appointment_follow_up_upsell', [
+              "0",
+              "Haircut & Beard Trim"
+            ])}
+          />
+          <TestTriggerButton 
+            label="7. 30/60-Day Re-engagement" 
+            sub="appointment_follow_up_upsell"
+            onClick={() => triggerTest('visit_completed', 'appointment_follow_up_upsell', [
+              "30",
               "Haircut & Beard Trim"
             ])}
           />
         </div>
+
+
 
         {statusMsg && (
           <div className="p-4 bg-accent/10 border border-accent/20 rounded-xl text-xs text-accent font-mono flex items-center justify-between animate-pulse">

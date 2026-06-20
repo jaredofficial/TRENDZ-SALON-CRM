@@ -12,6 +12,19 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [visitStatus, setVisitStatus] = useState('');
+  const [retentionFilter, setRetentionFilter] = useState<'all' | 'inactive30' | 'inactive60'>('all');
+
+  const getDaysSinceLastVisit = (lastVisitDate: string) => {
+    if (!lastVisitDate || lastVisitDate === 'N/A' || lastVisitDate === 'N/A ') return null;
+    const lastVisit = new Date(lastVisitDate);
+    const today = new Date();
+    lastVisit.setHours(0,0,0,0);
+    today.setHours(0,0,0,0);
+    const diffTime = today.getTime() - lastVisit.getTime();
+    if (diffTime < 0) return 0;
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  };
+
 
   const renderClientDetail = (client: any) => {
     return (
@@ -82,7 +95,7 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
           </div>
         </div>
 
-        <div className="p-6 bg-surface/50 border-t border-border mt-auto">
+        <div className="p-6 bg-surface/50 border-t border-border mt-auto space-y-3">
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={() => simulateVisit(client.name)}
@@ -91,15 +104,44 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
             <CheckCircle2 size={18} />
             Send Visit Confirmation Alert
           </motion.button>
+
+          {(() => {
+            const days = getDaysSinceLastVisit(client.lastVisit);
+            if (days !== null && days >= 30) {
+              return (
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => sendReengagementAlert(client)}
+                  className="w-full bg-green-500/10 text-green-500 border border-green-500/30 py-4 rounded-2xl font-bold hover:bg-green-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <MessageSquare size={18} />
+                  Send {days >= 60 ? '60-Day' : '30-Day'} Retention Message
+                </motion.button>
+              );
+            }
+            return null;
+          })()}
         </div>
       </div>
     );
   };
 
-  const filteredClients = clients.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone.includes(searchTerm)
-  );
+  const filteredClients = clients.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.phone.includes(searchTerm);
+    if (!matchesSearch) return false;
+
+    if (retentionFilter === 'inactive30') {
+      const days = getDaysSinceLastVisit(c.lastVisit);
+      return days !== null && days >= 30;
+    }
+    if (retentionFilter === 'inactive60') {
+      const days = getDaysSinceLastVisit(c.lastVisit);
+      return days !== null && days >= 60;
+    }
+
+    return true;
+  });
+
 
   const handleCall = (phone: string) => {
     window.location.href = `tel:${phone}`;
@@ -122,8 +164,9 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
         body: JSON.stringify({
           event: 'visit_completed',
           customer: { name, phone: selectedClient.phone },
-          template_id: 'appointment_confirmed_wa_text_v1',
-          variables: ["Trendz Salon", "500", new Date().toLocaleDateString()]
+          template_id: 'pos_checkout_confirmation',
+          variables: ["500", "Salon Service"]
+
         })
       });
       if (response.ok) {
@@ -141,7 +184,9 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
         return {
           ...c,
           visits: (c.visits || 0) + 1,
-          lastVisit: new Date().toISOString().split('T')[0]
+          lastVisit: new Date().toISOString().split('T')[0],
+          last30DayReminderCycle: 'pending',
+          last60DayReminderCycle: 'pending'
         };
       }
       return c;
@@ -151,6 +196,43 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
       setVisitStatus('');
     }, 3000);
   };
+
+  const sendReengagementAlert = async (client: any) => {
+    const days = getDaysSinceLastVisit(client.lastVisit) || 30;
+    const daysStr = days.toString();
+    const clientTxs = transactions.filter(tx => tx.phone === client.phone);
+    const lastTx = clientTxs[clientTxs.length - 1];
+    const lastService = lastTx ? lastTx.services : "service";
+
+    setVisitStatus(`Sending re-engagement WhatsApp to ${client.name}...`);
+
+    try {
+      const response = await fetch('/api/automation/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'visit_completed',
+          customer: { name: client.name, phone: client.phone },
+          template_id: 'appointment_follow_up_upsell',
+          variables: [daysStr, lastService]
+
+
+        })
+      });
+      if (response.ok) {
+        setVisitStatus(`Re-engagement WhatsApp sent to ${client.name}!`);
+      } else {
+        setVisitStatus(`Failed to send WhatsApp for ${client.name}`);
+      }
+    } catch (e) {
+      setVisitStatus(`Failed to send WhatsApp for ${client.name}`);
+    }
+
+    setTimeout(() => {
+      setVisitStatus('');
+    }, 3000);
+  };
+
 
   return (
     <motion.div
@@ -206,6 +288,15 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
                 className="w-full bg-surface border border-border rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none"
               />
             </div>
+            <select
+              value={retentionFilter}
+              onChange={(e) => setRetentionFilter(e.target.value as any)}
+              className="bg-surface border border-border rounded-xl py-2 px-4 text-sm focus:outline-none text-white cursor-pointer hover:border-accent/40 transition-colors"
+            >
+              <option value="all">All Clients</option>
+              <option value="inactive30">Inactive (30+ Days)</option>
+              <option value="inactive60">Inactive (60+ Days)</option>
+            </select>
           </div>
         </div>
 
@@ -217,6 +308,7 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
                   <tr>
                     <th className="px-6 py-4 font-semibold">Client</th>
                     <th className="px-6 py-4 font-semibold">Visits</th>
+                    <th className="px-6 py-4 font-semibold">Last Visit</th>
                     <th className="px-6 py-4 font-semibold">Points</th>
                     <th className="px-6 py-4 font-semibold">Total Spent</th>
                     <th className="px-6 py-4 font-semibold"></th>
@@ -243,6 +335,17 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
                       </td>
                       <td className="px-6 py-4">
                         <span className="font-semibold">{client.visits || 0}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm">
+                          <p className="font-medium text-white">{client.lastVisit || 'N/A'}</p>
+                          {(() => {
+                            const days = getDaysSinceLastVisit(client.lastVisit);
+                            return days !== null && days >= 30 ? (
+                              <p className="text-[10px] text-red-500 font-bold uppercase tracking-wide mt-0.5">{days} days inactive</p>
+                            ) : null;
+                          })()}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1 text-accent">

@@ -175,7 +175,11 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
       `"${tx.services.replace(/"/g, '""')}"`,
       tx.total,
       `"${tx.staffNames.replace(/"/g, '""')}"`,
-      Math.round((tx.incentivePerStaff || 0) * (tx.staffIds?.length || 1)),
+      Math.round(
+        tx.staffIncentives 
+          ? Object.values(tx.staffIncentives as Record<string, number>).reduce((sum: number, val: number) => sum + (val || 0), 0)
+          : (tx.incentivePerStaff || 0) * (tx.staffIds?.length || 1)
+      ),
       tx.paymentMethod
     ]);
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');

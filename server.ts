@@ -118,7 +118,7 @@ async function startServer() {
       let delay = 3000; // default 3s delay
 
       if (event === 'google_review_follow_up') {
-        delay = 2 * 60 * 1000; // 2 minutes
+        delay = 24 * 60 * 60 * 1000; // 1 day
       } else if (event === 'checkout_upsell') {
         delay = 6 * 60 * 1000; // 6 minutes
       } else if (event === 'appointment_reminder') {
@@ -137,8 +137,8 @@ async function startServer() {
             apptDateTime.setHours(hours, minutes, 0, 0);
             
             const now = new Date();
-            // Reminder target is 5 minutes before appointment
-            const reminderTime = new Date(apptDateTime.getTime() - 5 * 60 * 1000);
+            // Reminder target is 24 hours before appointment
+            const reminderTime = new Date(apptDateTime.getTime() - 24 * 60 * 60 * 1000);
             const diffMs = reminderTime.getTime() - now.getTime();
             
             // Fallback to 10 seconds if reminder time has passed or is very near
@@ -187,19 +187,26 @@ async function startServer() {
             components.body_2 = { type: "text", value: variables?.[0] || "" };
           } else if (finalTemplateId === 'appointment_reminder_text') {
             components.body_1 = { type: "text", value: customer?.name || "Client" };
-            components.body_2 = { type: "text", value: "Vintage Paris" };
+            components.body_2 = { type: "text", value: "Trendz Salon" };
             components.body_3 = { type: "text", value: variables?.[0] || "" };
             components.body_4 = { type: "text", value: variables?.[1] || "" };
           } else if (finalTemplateId === 'appointment_follow_up_upsell') {
             components.header_1 = { type: "text", value: customer?.name || "Client" };
+            components.body_1 = { type: "text", value: variables?.[0] || "" };
+            components.body_2 = { type: "text", value: variables?.[1] || "" };
+          } else if (finalTemplateId === 'client_reengagement_text') {
             components.body_1 = { type: "text", value: customer?.name || "Client" };
-            components.body_2 = { type: "text", value: variables?.[0] || "" };
+            components.body_2 = { type: "text", value: "Trendz Salon" };
+            components.body_3 = { type: "text", value: variables?.[0] || "30" };
+            components.body_4 = { type: "text", value: variables?.[1] || "0" };
           } else {
+
             // Default fallback/reminder template structure
             components.body_1 = { type: "text", value: customer?.name || "Client" };
-            components.body_2 = { type: "text", value: variables?.[0] || "Aion Salon" };
+            components.body_2 = { type: "text", value: variables?.[0] || "Trendz Salon" };
             components.body_3 = { type: "text", value: variables?.[1] || new Date().toLocaleDateString() };
           }
+
 
           const payload = {
             integrated_number: integratedNumber,

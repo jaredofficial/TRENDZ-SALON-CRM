@@ -29,7 +29,9 @@ export default function Settings({ settings, setSettings }: SettingsProps) {
     localStorage.removeItem('trendz_staff');
     localStorage.removeItem('trendz_appointments');
     localStorage.removeItem('trendz_transactions');
+    localStorage.removeItem('trendz_services');
     localStorage.removeItem('trendz_settings');
+
     
     // Attempt to delete remote Supabase rows
     try {

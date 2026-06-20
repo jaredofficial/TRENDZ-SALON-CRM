@@ -53,15 +53,35 @@ export default function StaffTracking({ staff, setStaff, transactions }: StaffTr
   const staffStats = staff.map(member => {
     // Overall stats
     const overallTxs = transactions.filter(tx => tx.staffIds && tx.staffIds.includes(member.id));
-    const overallRevenue = overallTxs.reduce((sum, tx) => sum + (tx.total / (tx.staffIds.length || 1)), 0);
+    const overallRevenue = overallTxs.reduce((sum, tx) => {
+      if (tx.staffRevenueShare && tx.staffRevenueShare[member.id] !== undefined) {
+        return sum + tx.staffRevenueShare[member.id];
+      }
+      return sum + (tx.total / (tx.staffIds.length || 1));
+    }, 0);
     const overallClients = overallTxs.length;
-    const overallIncentives = overallTxs.reduce((sum, tx) => sum + (tx.incentivePerStaff || 0), 0);
+    const overallIncentives = overallTxs.reduce((sum, tx) => {
+      if (tx.staffIncentives && tx.staffIncentives[member.id] !== undefined) {
+        return sum + tx.staffIncentives[member.id];
+      }
+      return sum + (tx.incentivePerStaff || 0);
+    }, 0);
 
     // Selected month stats
     const monthTxs = overallTxs.filter(tx => getYearMonth(tx.date) === selectedMonth);
-    const monthRevenue = monthTxs.reduce((sum, tx) => sum + (tx.total / (tx.staffIds.length || 1)), 0);
+    const monthRevenue = monthTxs.reduce((sum, tx) => {
+      if (tx.staffRevenueShare && tx.staffRevenueShare[member.id] !== undefined) {
+        return sum + tx.staffRevenueShare[member.id];
+      }
+      return sum + (tx.total / (tx.staffIds.length || 1));
+    }, 0);
     const monthClients = monthTxs.length;
-    const monthIncentives = monthTxs.reduce((sum, tx) => sum + (tx.incentivePerStaff || 0), 0);
+    const monthIncentives = monthTxs.reduce((sum, tx) => {
+      if (tx.staffIncentives && tx.staffIncentives[member.id] !== undefined) {
+        return sum + tx.staffIncentives[member.id];
+      }
+      return sum + (tx.incentivePerStaff || 0);
+    }, 0);
 
     return {
       ...member,
@@ -408,18 +428,23 @@ export default function StaffTracking({ staff, setStaff, transactions }: StaffTr
                 <div className="space-y-3 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
                   {transactions
                     .filter(tx => getYearMonth(tx.date) === selectedMonth && tx.staffIds && tx.staffIds.includes(selectedStaff.id))
-                    .map((tx, idx) => (
-                      <div key={idx} className="flex justify-between items-center p-3 bg-surface-hover rounded-xl border border-border text-sm">
-                        <div>
-                          <p className="font-bold text-white">{tx.clientName}</p>
-                          <p className="text-xs text-muted">{tx.services}</p>
+                    .map((tx, idx) => {
+                      const incentiveForThisStaff = tx.staffIncentives && tx.staffIncentives[selectedStaff.id] !== undefined
+                        ? tx.staffIncentives[selectedStaff.id]
+                        : tx.incentivePerStaff;
+                      return (
+                        <div key={idx} className="flex justify-between items-center p-3 bg-surface-hover rounded-xl border border-border text-sm">
+                          <div>
+                            <p className="font-bold text-white">{tx.clientName}</p>
+                            <p className="text-xs text-muted">{tx.services}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-accent">+₹{Math.round(incentiveForThisStaff)}</p>
+                            <p className="text-[10px] text-muted">{tx.date}</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-bold text-accent">+₹{Math.round(tx.incentivePerStaff)}</p>
-                          <p className="text-[10px] text-muted">{tx.date}</p>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   {transactions.filter(tx => getYearMonth(tx.date) === selectedMonth && tx.staffIds && tx.staffIds.includes(selectedStaff.id)).length === 0 && (
                     <p className="text-sm text-muted text-center italic py-4">No incentive logs found for this month.</p>
                   )}

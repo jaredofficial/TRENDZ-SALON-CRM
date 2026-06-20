@@ -17,15 +17,15 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Appointment } from '../types';
-import { services } from '../data/mockData';
 
 interface AppointmentsProps {
   appointments: Appointment[];
   setAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
   clients?: any[];
+  services?: any[];
 }
 
-export default function Appointments({ appointments, setAppointments, clients = [] }: AppointmentsProps) {
+export default function Appointments({ appointments, setAppointments, clients = [], services = [] }: AppointmentsProps) {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
