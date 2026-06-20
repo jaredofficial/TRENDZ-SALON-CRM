@@ -28,6 +28,7 @@ import AutomationSettings from './components/AutomationSettings';
 import Settings from './components/Settings';
 import Appointments from './components/Appointments';
 import logoUrl from './logo.png';
+import { supabase } from './lib/supabase';
 
 type Tab = 'dashboard' | 'pos' | 'appointments' | 'staff' | 'clients' | 'automations' | 'settings';
 
@@ -114,6 +115,102 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('trendz_services', JSON.stringify(localServices));
   }, [localServices]);
+
+  // Load data from Supabase on startup
+  useEffect(() => {
+    async function loadDataFromSupabase() {
+      const rawUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      if (!rawUrl || rawUrl.includes('placeholder')) {
+        console.log("Supabase URL is placeholder, skipping cloud loading");
+        return;
+      }
+
+      try {
+        console.log("⏳ Syncing App state with remote Supabase database...");
+        
+        // 1. Fetch staff
+        const { data: dbStaff } = await supabase.from('staff').select('*');
+        if (dbStaff && dbStaff.length > 0) {
+          setStaff(dbStaff.map(s => ({
+            id: s.id,
+            name: s.name,
+            role: s.role,
+            phone: s.phone || '+919999999901',
+            email: s.email || `${s.name.toLowerCase()}@trendzsalon.com`
+          })));
+        }
+
+        // 2. Fetch transactions
+        const { data: dbTxs } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
+        let transactionsList: any[] = [];
+        if (dbTxs && dbTxs.length > 0) {
+          transactionsList = dbTxs.map(tx => ({
+            id: tx.id,
+            date: tx.created_at ? tx.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            timestamp: tx.created_at || new Date().toISOString(),
+            clientName: tx.client_name,
+            phone: tx.phone,
+            services: tx.services,
+            total: tx.total,
+            paymentMethod: tx.payment_method || 'Cash',
+            staffNames: 'Trendz Stylist',
+            staffIds: ['ST-TRENDZ'],
+            incentivePerStaff: Math.round(tx.total * 0.05),
+            staffIncentives: { 'ST-TRENDZ': Math.round(tx.total * 0.05) },
+            staffRevenueShare: { 'ST-TRENDZ': tx.total }
+          }));
+          setTransactions(transactionsList);
+        }
+
+        // 3. Fetch clients
+        const { data: dbClients } = await supabase.from('clients').select('*');
+        if (dbClients && dbClients.length > 0) {
+          const enrichedClients = dbClients.map(c => {
+            const clientTxs = transactionsList.filter(tx => tx.phone === c.phone);
+            const totalSpent = clientTxs.reduce((sum, tx) => sum + (tx.total || 0), 0);
+            const visits = clientTxs.length || c.total_visits || 0;
+            const lastVisit = clientTxs.length > 0 
+              ? clientTxs[0].date 
+              : c.last_visit || 'N/A';
+            const points = Math.round(totalSpent * 0.1);
+
+            return {
+              id: c.id,
+              name: c.name,
+              phone: c.phone,
+              visits,
+              totalSpent,
+              lastVisit,
+              points,
+              last30DayReminderCycle: c.last_visit ? c.last_visit : undefined,
+              last60DayReminderCycle: c.last_visit ? c.last_visit : undefined
+            };
+          });
+          setClients(enrichedClients);
+        }
+
+        // 4. Fetch appointments
+        const { data: dbAppts } = await supabase.from('appointments').select('*');
+        if (dbAppts && dbAppts.length > 0) {
+          setAppointments(dbAppts.map(appt => ({
+            id: appt.id,
+            clientName: appt.client_name,
+            phone: appt.phone,
+            service: appt.service,
+            date: appt.date,
+            time: appt.time,
+            status: appt.status || 'confirmed'
+          })));
+        }
+        
+        console.log("✅ Successfully loaded live cloud data from Supabase!");
+      } catch (err) {
+        console.error("Failed loading from Supabase:", err);
+      }
+    }
+
+    loadDataFromSupabase();
+  }, []);
 
   // Automated 30/60 Days Inactivity Reminders check
   useEffect(() => {

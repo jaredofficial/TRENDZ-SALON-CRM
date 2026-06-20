@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Filter, MoreVertical, History, Star, Phone, Calendar, MessageSquare, Award, CheckCircle2, UserCheck, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from '../lib/supabase';
 
 interface ClientDatabaseProps {
   clients: any[];
@@ -177,6 +178,18 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
     } catch (e) {
       setVisitStatus(`Visit recorded for ${name}`);
     }
+
+    // Update visits in Supabase
+    supabase.from('clients').upsert({
+      id: selectedClient.id,
+      name: selectedClient.name,
+      phone: selectedClient.phone,
+      total_visits: (selectedClient.visits || 0) + 1,
+      total_spent: selectedClient.totalSpent || 0,
+      last_visit: new Date().toISOString().split('T')[0]
+    }).then(({ error }) => {
+      if (error) console.error("Failed to sync manual visit to Supabase:", error);
+    });
 
     // Update visits in parent state
     setClients(prevClients => prevClients.map(c => {

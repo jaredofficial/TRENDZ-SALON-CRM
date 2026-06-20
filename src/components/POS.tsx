@@ -18,6 +18,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from '../lib/supabase';
 
 interface POSProps {
   clients: any[];
@@ -214,6 +215,19 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
 
     setTransactions(prev => [newTransaction, ...prev]);
 
+    // Push new transaction to Supabase
+    supabase.from('transactions').insert({
+      id: newTransaction.id,
+      client_name: newTransaction.clientName,
+      phone: newTransaction.phone,
+      services: newTransaction.services,
+      total: newTransaction.total,
+      payment_method: newTransaction.paymentMethod,
+      created_at: newTransaction.timestamp
+    }).then(({ error }) => {
+      if (error) console.error("Failed to sync transaction to Supabase:", error);
+    });
+
     // Update staff statistics in the local state
     if (uniqueStaffIds.length > 0) {
       setClients(prevClients => prevClients); // Trick to trigger sync/updates
@@ -221,17 +235,31 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
 
     // Update customer stats (visits, loyalty points, spent)
     if (selectedCustomer) {
+      const newVisits = (selectedCustomer.visits || 0) + 1;
+      const newSpent = (selectedCustomer.totalSpent || 0) + total;
+      
+      supabase.from('clients').upsert({
+        id: selectedCustomer.id,
+        name: selectedCustomer.name,
+        phone: selectedCustomer.phone,
+        total_visits: newVisits,
+        total_spent: newSpent,
+        last_visit: new Date().toISOString().split('T')[0]
+      }).then(({ error }) => {
+        if (error) console.error("Failed to sync client update to Supabase:", error);
+      });
+
       setClients(prevClients => prevClients.map(client => {
         if (client.id === selectedCustomer.id) {
-          const newVisits = (client.visits || 0) + 1;
-          const newSpent = (client.totalSpent || 0) + total;
+          const newVisitsVal = (client.visits || 0) + 1;
+          const newSpentVal = (client.totalSpent || 0) + total;
           // earn 10% points on total bill
           const earnedPoints = Math.round(total * 0.1);
           const newPoints = (client.points || 0) + earnedPoints - redeemedPoints;
           return {
             ...client,
-            visits: newVisits,
-            totalSpent: newSpent,
+            visits: newVisitsVal,
+            totalSpent: newSpentVal,
             points: newPoints,
             lastVisit: new Date().toISOString().split('T')[0],
             last30DayReminderCycle: 'pending',
@@ -904,6 +932,18 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
                       lastVisit: 'N/A',
                       frequent: []
                     };
+                    
+                    supabase.from('clients').insert({
+                      id: customer.id,
+                      name: customer.name,
+                      phone: customer.phone,
+                      total_visits: 0,
+                      total_spent: 0,
+                      last_visit: null
+                    }).then(({ error }) => {
+                      if (error) console.error("Failed to sync new customer to Supabase:", error);
+                    });
+
                     setClients(prev => [...prev, customer]);
                     setSelectedCustomer(customer);
                     setShowCustomerForm(false);

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Appointment } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface AppointmentsProps {
   appointments: Appointment[];
@@ -162,6 +163,19 @@ export default function Appointments({ appointments, setAppointments, clients = 
       price: totalPrice
     };
 
+    // Save appointment to Supabase
+    supabase.from('appointments').upsert({
+      id: newAppt.id,
+      client_name: newAppt.clientName,
+      phone: newAppt.phone,
+      service: newAppt.service,
+      date: newAppt.date,
+      time: newAppt.time,
+      status: newAppt.status
+    }).then(({ error }) => {
+      if (error) console.error("Failed to sync new appointment to Supabase:", error);
+    });
+
     setAppointments(prev => [newAppt, ...prev]);
 
     // 1. Trigger Booking Confirmation WhatsApp
@@ -219,6 +233,19 @@ export default function Appointments({ appointments, setAppointments, clients = 
     e.preventDefault();
     if (!reschedulingAppt) return;
 
+    // Sync rescheduled appointment to Supabase
+    supabase.from('appointments').upsert({
+      id: reschedulingAppt.id,
+      client_name: reschedulingAppt.clientName,
+      phone: reschedulingAppt.phone,
+      service: reschedulingAppt.service,
+      date: rescheduleDate,
+      time: rescheduleTime,
+      status: 'rescheduled'
+    }).then(({ error }) => {
+      if (error) console.error("Failed to sync rescheduled appointment to Supabase:", error);
+    });
+
     setAppointments(prev => 
       prev.map(appt => 
         appt.id === reschedulingAppt.id 
@@ -252,6 +279,21 @@ export default function Appointments({ appointments, setAppointments, clients = 
 
   const handleCancelAppointment = (id: string) => {
     if (confirm("Are you sure you want to cancel this appointment?")) {
+      const foundAppt = appointments.find(appt => appt.id === id);
+      if (foundAppt) {
+        supabase.from('appointments').upsert({
+          id: foundAppt.id,
+          client_name: foundAppt.clientName,
+          phone: foundAppt.phone,
+          service: foundAppt.service,
+          date: foundAppt.date,
+          time: foundAppt.time,
+          status: 'cancelled'
+        }).then(({ error }) => {
+          if (error) console.error("Failed to sync cancelled appointment to Supabase:", error);
+        });
+      }
+
       setAppointments(prev => 
         prev.map(appt => 
           appt.id === id ? { ...appt, status: 'cancelled' } : appt
