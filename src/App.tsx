@@ -144,21 +144,33 @@ export default function App() {
         const { data: dbTxs } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
         let transactionsList: any[] = [];
         if (dbTxs && dbTxs.length > 0) {
-          transactionsList = dbTxs.map(tx => ({
-            id: tx.id,
-            date: tx.created_at ? tx.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-            timestamp: tx.created_at || new Date().toISOString(),
-            clientName: tx.client_name,
-            phone: tx.phone,
-            services: tx.services,
-            total: tx.total,
-            paymentMethod: tx.payment_method || 'Cash',
-            staffNames: 'Trendz Stylist',
-            staffIds: ['ST-TRENDZ'],
-            incentivePerStaff: Math.round(tx.total * 0.05),
-            staffIncentives: { 'ST-TRENDZ': Math.round(tx.total * 0.05) },
-            staffRevenueShare: { 'ST-TRENDZ': tx.total }
-          }));
+          let localTxs: any[] = [];
+          const savedTxs = localStorage.getItem('trendz_transactions');
+          if (savedTxs) {
+            try {
+              localTxs = JSON.parse(savedTxs);
+            } catch (e) {}
+          }
+
+          transactionsList = dbTxs.map(tx => {
+            const matchedTx = localTxs.find(ltx => ltx.id === tx.id) || initialTransactions.find(itx => itx.id === tx.id);
+            
+            return {
+              id: tx.id,
+              date: tx.created_at ? tx.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+              timestamp: tx.created_at || new Date().toISOString(),
+              clientName: tx.client_name,
+              phone: tx.phone,
+              services: tx.services,
+              total: tx.total,
+              paymentMethod: tx.payment_method || 'Cash',
+              staffNames: matchedTx ? matchedTx.staffNames : 'Trendz Stylist',
+              staffIds: matchedTx ? matchedTx.staffIds : ['ST-TRENDZ'],
+              incentivePerStaff: matchedTx ? matchedTx.incentivePerStaff : Math.round(tx.total * 0.05),
+              staffIncentives: matchedTx ? matchedTx.staffIncentives : { 'ST-TRENDZ': Math.round(tx.total * 0.05) },
+              staffRevenueShare: matchedTx ? matchedTx.staffRevenueShare : { 'ST-TRENDZ': tx.total }
+            };
+          });
           setTransactions(transactionsList);
         }
 

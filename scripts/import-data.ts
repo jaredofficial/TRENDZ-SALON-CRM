@@ -214,6 +214,35 @@ async function runImport() {
       
       const incentiveAmt = Math.round(amt * 0.05);
 
+      const staffIds = [staffId];
+      let staffNames = staffName;
+      const staffIncentives: Record<string, number> = { [staffId]: incentiveAmt };
+      const staffRevenueShare: Record<string, number> = { [staffId]: amt };
+
+      // Parse helper notes (e.g. "150+ WASIF") from column 8 (Notes)
+      const notesVal = row[8];
+      if (notesVal && typeof notesVal === 'string') {
+        const helperMatch = notesVal.match(/(\d+)\s*\+\s*([a-zA-Z\s]+)/);
+        if (helperMatch) {
+          const extraAmt = Number(helperMatch[1]);
+          const helperName = helperMatch[2].trim().toUpperCase();
+          const foundHelper = staffMap[helperName];
+          if (foundHelper) {
+            if (foundHelper.id === staffId) {
+              // Same staff: add extra amount directly to their incentive and revenue share
+              staffIncentives[staffId] += extraAmt;
+              staffRevenueShare[staffId] += extraAmt;
+            } else {
+              // Different staff helper: append to staffIds/names and set their share
+              staffIds.push(foundHelper.id);
+              staffNames = `${staffName}, ${foundHelper.name}`;
+              staffIncentives[foundHelper.id] = extraAmt;
+              staffRevenueShare[foundHelper.id] = extraAmt;
+            }
+          }
+        }
+      }
+
       const tx = {
         id: txId,
         date: txDate,
@@ -223,11 +252,11 @@ async function runImport() {
         services: servicesText,
         total: amt,
         paymentMethod: paymentMethod,
-        staffIds: [staffId],
-        staffNames: staffName,
+        staffIds: staffIds,
+        staffNames: staffNames,
         incentivePerStaff: incentiveAmt,
-        staffIncentives: { [staffId]: incentiveAmt },
-        staffRevenueShare: { [staffId]: amt }
+        staffIncentives: staffIncentives,
+        staffRevenueShare: staffRevenueShare
       };
 
       transactions.push(tx);
