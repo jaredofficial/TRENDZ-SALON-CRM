@@ -42,12 +42,33 @@ export default function StaffTracking({ staff, setStaff, transactions }: StaffTr
   // Helper to extract year-month from date string YYYY-MM-DD
   const getYearMonth = (dateStr: string) => dateStr.substring(0, 7);
 
-  // Get unique months from transactions list
-  const transactionMonths = Array.from(new Set(transactions.map(tx => getYearMonth(tx.date))));
-  if (!transactionMonths.includes(currentMonthStr)) {
-    transactionMonths.push(currentMonthStr);
-  }
-  transactionMonths.sort((a, b) => b.localeCompare(a)); // Sort descending
+  // Generate all months from January of the earliest transaction year (default 2026) up to current month
+  const getMonthsRange = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0 = Jan, 11 = Dec
+
+    let earliestYear = 2026;
+    transactions.forEach(tx => {
+      if (tx.date) {
+        const year = Number(tx.date.substring(0, 4));
+        if (!isNaN(year) && year < earliestYear) {
+          earliestYear = year;
+        }
+      }
+    });
+
+    const months: string[] = [];
+    for (let y = currentYear; y >= earliestYear; y--) {
+      const maxMonth = (y === currentYear) ? currentMonth : 11;
+      for (let m = maxMonth; m >= 0; m--) {
+        months.push(`${y}-${String(m + 1).padStart(2, '0')}`);
+      }
+    }
+    return months;
+  };
+
+  const transactionMonths = getMonthsRange();
 
   // Compute stats for each staff member (overall and selected month)
   const staffStats = staff.map(member => {

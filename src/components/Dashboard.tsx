@@ -43,6 +43,7 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [aiReportText, setAIReportText] = useState('');
+  const [revenueDetailsType, setRevenueDetailsType] = useState<'daily' | 'weekly' | 'monthly' | null>(null);
 
   useEffect(() => {
     async function checkConnection() {
@@ -163,6 +164,26 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
   // Monthly Goal
   const monthlyGoal = Number(settings?.revenueGoal) || 500000;
   const goalPercentage = Math.min(100, Math.round((monthlyRevenue / monthlyGoal) * 100));
+
+  // Helper to filter transactions based on selected revenue type for modal
+  const getSelectedRevenueTransactions = () => {
+    if (!revenueDetailsType) return [];
+    if (revenueDetailsType === 'daily') {
+      return transactions.filter(tx => tx.date === todayStr);
+    }
+    if (revenueDetailsType === 'weekly') {
+      return transactions.filter(tx => {
+        const txDate = new Date(tx.date);
+        const diffTime = Math.abs(new Date().getTime() - txDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays <= 7;
+      });
+    }
+    if (revenueDetailsType === 'monthly') {
+      return transactions.filter(tx => tx.date.substring(0, 7) === currentMonthStr);
+    }
+    return [];
+  };
 
   // CSV Export Utility
   const downloadCSV = (filteredTxs: any[], fileName: string) => {
@@ -447,6 +468,7 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
           change="+12.5%" 
           isPositive={true} 
           icon={DollarSign}
+          onClick={() => setRevenueDetailsType('daily')}
         />
         <StatCard 
           title="Weekly Revenue" 
@@ -454,6 +476,7 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
           change="+8.2%" 
           isPositive={true} 
           icon={TrendingUp}
+          onClick={() => setRevenueDetailsType('weekly')}
         />
         <StatCard 
           title="Monthly Revenue" 
@@ -461,6 +484,7 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
           change="+15.4%" 
           isPositive={true} 
           icon={CalendarIcon}
+          onClick={() => setRevenueDetailsType('monthly')}
         />
         <StatCard 
           title="Yearly Revenue" 
@@ -740,13 +764,126 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
           </div>
         )}
       </AnimatePresence>
+
+      {/* Revenue Details Modal */}
+      <AnimatePresence>
+        {revenueDetailsType && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setRevenueDetailsType(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-4xl bg-surface border border-border rounded-[2.5rem] p-6 md:p-8 shadow-2xl z-10 max-h-[85vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between border-b border-border pb-4 mb-4">
+                <div>
+                  <h3 className="text-xl font-bold uppercase tracking-wide text-white">
+                    {revenueDetailsType.charAt(0).toUpperCase() + revenueDetailsType.slice(1)} Revenue Details
+                  </h3>
+                  <p className="text-xs text-muted mt-1">
+                    Showing transactions contributing to {revenueDetailsType} revenue
+                  </p>
+                </div>
+                <button onClick={() => setRevenueDetailsType(null)} className="text-muted hover:text-white transition-colors p-1">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Summary stat strip */}
+              <div className="flex items-center gap-4 bg-surface-hover/50 border border-border/50 rounded-2xl p-4 mb-4">
+                <div>
+                  <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Total Period Revenue</p>
+                  <p className="text-2xl font-bold text-accent">
+                    {formatCurrency(
+                      getSelectedRevenueTransactions().reduce((sum, tx) => sum + tx.total, 0)
+                    )}
+                  </p>
+                </div>
+                <div className="h-8 w-px bg-border"></div>
+                <div>
+                  <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Total Sales Count</p>
+                  <p className="text-2xl font-bold text-white">
+                    {getSelectedRevenueTransactions().length} bills
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2">
+                {getSelectedRevenueTransactions().length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-border/70 text-muted uppercase tracking-widest text-[10px] font-bold">
+                          <th className="py-3 px-4">Date</th>
+                          <th className="py-3 px-4">Customer Name</th>
+                          <th className="py-3 px-4">Services Taken</th>
+                          <th className="py-3 px-4">Contributing Staff</th>
+                          <th className="py-3 px-4 text-right">Amount Billed</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/30 text-sm">
+                        {getSelectedRevenueTransactions().map((tx) => (
+                          <tr key={tx.id} className="hover:bg-white/5 transition-all">
+                            <td className="py-4 px-4 whitespace-nowrap text-xs font-semibold text-muted">
+                              {tx.date}
+                            </td>
+                            <td className="py-4 px-4 font-bold text-white">
+                              {tx.clientName}
+                            </td>
+                            <td className="py-4 px-4 text-muted max-w-[250px] truncate" title={tx.services}>
+                              {tx.services}
+                            </td>
+                            <td className="py-4 px-4 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/20">
+                                {tx.staffNames}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4 font-bold text-white text-right whitespace-nowrap">
+                              {formatCurrency(tx.total)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="h-48 flex flex-col items-center justify-center text-center">
+                    <p className="text-muted italic text-sm">No transactions found for this period.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border pt-4 mt-4 flex justify-end">
+                <button 
+                  onClick={() => setRevenueDetailsType(null)}
+                  className="bg-accent text-white px-6 py-2.5 rounded-xl text-xs font-bold transition-all hover:opacity-90 shadow-lg shadow-accent/20"
+                >
+                  Close Details
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function StatCard({ title, value, change, isPositive, icon: Icon }: any) {
+function StatCard({ title, value, change, isPositive, icon: Icon, onClick }: any) {
   return (
-    <div className="glass rounded-3xl p-6 card-hover">
+    <div 
+      onClick={onClick}
+      className={`glass rounded-3xl p-6 transition-all ${
+        onClick ? 'cursor-pointer hover:border-accent/40 border border-transparent card-hover' : 'card-hover'
+      }`}
+    >
       <div className="flex items-center justify-between mb-4">
         <div className="p-3 bg-surface rounded-2xl text-accent">
           <Icon size={20} />
