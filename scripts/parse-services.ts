@@ -93,8 +93,54 @@ processedServices.forEach(s => {
   servicesTS += `  { id: ${JSON.stringify(s.id)}, name: ${JSON.stringify(s.name)}, price: ${s.price}, category: ${JSON.stringify(s.category)}, icon: ${s.icon}${notesStr} },\n`;
 });
 
-// Close the array
-servicesTS += `\n];`;
+// Append package services
+servicesTS += `  {
+    id: "pkg-1",
+    name: "Super Combo Package",
+    price: 1800,
+    category: "Packages",
+    icon: Sparkles,
+    isPackage: true,
+    packageServices: [
+      { name: "Haircut", price: 1000 },
+      { name: "Nails (Pedicure)", price: 600 },
+      { name: "Manicure", price: 400 },
+      { name: "Facial", price: 1200 }
+    ]
+  },
+  {
+    id: "pkg-head2toe",
+    name: "Head 2 Toe Package",
+    price: 2999,
+    category: "Packages",
+    icon: Sparkles,
+    isPackage: true,
+    packageServices: [
+      { name: "Keratin Hair Spa", price: 0 },
+      { name: "Hair Cut + Blow Setting", price: 0 },
+      { name: "Lotus Gold with Facial", price: 0 },
+      { name: "Lotus Manicure", price: 0 },
+      { name: "Lotus Pedicure", price: 0 },
+      { name: "Threading", price: 0 },
+      { name: "Head & Neck Massage", price: 0 }
+    ]
+  },
+  {
+    id: "pkg-1500",
+    name: "1500 Package",
+    price: 1500,
+    category: "Packages",
+    icon: Sparkles,
+    isPackage: true,
+    packageServices: [
+      { name: "Haircut + Hair Wash + Blow-Dry", price: 0 },
+      { name: "Loreal Hair Spa", price: 0 },
+      { name: "Facial + Face De-Tan Pack", price: 0 },
+      { name: "Manicure OR Pedicure", price: 0 },
+      { name: "Head, Neck & Back Massage (10 min)", price: 0 },
+      { name: "Threading (Upper Lip/Eyebrows)", price: 0 }
+    ]
+  }\n];`;
 
 // Replace services in mockDataContent
 const servicesRegex = /export const services = \[\s*[\s\S]*?\n\];/;

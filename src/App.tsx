@@ -68,7 +68,8 @@ export default function App() {
 
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     const saved = localStorage.getItem('trendz_appointments');
-    return saved ? JSON.parse(saved) : [];
+    const parsed = saved ? JSON.parse(saved) : [];
+    return parsed.filter((appt: any) => appt.date !== '2026-06-21');
   });
 
   const [transactions, setTransactions] = useState<any[]>(() => {
@@ -82,12 +83,12 @@ export default function App() {
         if (!hasOtherStaff && txs.length > 50) {
           console.warn("Auto-cleared corrupted ST-TRENDZ-only transaction cache.");
           localStorage.removeItem('trendz_transactions');
-          return initialTransactions;
+          return initialTransactions.filter((tx: any) => tx.date !== '2026-06-21');
         }
-        return txs;
+        return txs.filter((tx: any) => tx.date !== '2026-06-21');
       } catch (e) {}
     }
-    return initialTransactions;
+    return initialTransactions.filter((tx: any) => tx.date !== '2026-06-21');
   });
 
   const [settings, setSettings] = useState(() => {
@@ -103,7 +104,14 @@ export default function App() {
 
   const [localServices, setLocalServices] = useState<any[]>(() => {
     const saved = localStorage.getItem('trendz_services');
-    return saved ? JSON.parse(saved) : services;
+    let loaded = saved ? JSON.parse(saved) : services;
+    // Auto-sync if the new packages are missing from cache, or if the cache was wiped/truncated
+    const hasHead2Toe = loaded.some((s: any) => s.id === 'pkg-head2toe');
+    if (!hasHead2Toe || loaded.length < 30) {
+      loaded = services;
+      localStorage.setItem('trendz_services', JSON.stringify(services));
+    }
+    return loaded;
   });
 
   useEffect(() => {
@@ -184,7 +192,7 @@ export default function App() {
               staffIncentives: matchedTx ? matchedTx.staffIncentives : { 'ST-TRENDZ': Math.round(tx.total * 0.05) },
               staffRevenueShare: matchedTx ? matchedTx.staffRevenueShare : { 'ST-TRENDZ': tx.total }
             };
-          });
+          }).filter((tx: any) => tx.date !== '2026-06-21');
           setTransactions(transactionsList);
         }
 
@@ -226,7 +234,7 @@ export default function App() {
             date: appt.date,
             time: appt.time,
             status: appt.status || 'confirmed'
-          })));
+          })).filter((appt: any) => appt.date !== '2026-06-21'));
         }
         
         console.log("✅ Successfully loaded live cloud data from Supabase!");
@@ -438,7 +446,6 @@ export default function App() {
     { id: 'appointments', icon: Calendar, label: 'Appointments' },
     { id: 'staff', icon: Users, label: 'Staff Tracking' },
     { id: 'clients', icon: UserCircle, label: 'Client Base' },
-    { id: 'automations', icon: Bell, label: 'Automations' },
     { id: 'settings', icon: SettingsIcon, label: 'Settings' },
   ];
 
@@ -829,7 +836,6 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     { id: 'staff', icon: Users, label: 'Staff' },
-                    { id: 'automations', icon: Bell, label: 'Automations' },
                     { id: 'settings', icon: SettingsIcon, label: 'Settings' },
                   ].map(item => (
                     <button

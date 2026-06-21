@@ -45,8 +45,6 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const [redeemedPoints, setRedeemedPoints] = useState(0);
   const [showQRModal, setShowQRModal] = useState(false);
   
-  // Selected staff IDs for incentives split
-  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [serviceSearch, setServiceSearch] = useState('');
   const [posTab, setPosTab] = useState<'services' | 'cart'>('services');
 
@@ -56,8 +54,24 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const [newServiceCategory, setNewServiceCategory] = useState('');
   const [customCategory, setCustomCategory] = useState('');
 
-  const categories = ['All', ...new Set(services.map((s: any) => s.category))] as string[];
-  const existingCategories = Array.from(new Set(services.filter((s: any) => !s.isPackage).map((s: any) => s.category))) as string[];
+  const getSimpleCategory = (cat: string): string => {
+    const c = (cat || '').toLowerCase();
+    if (c.includes('hair') || c.includes('straight') || c.includes('smooth') || c.includes('styling') || c.includes('cut')) return 'Hair';
+    if (c.includes('skin') || c.includes('face') || c.includes('facial')) return 'Skin';
+    if (c.includes('nail') || c.includes('mani') || c.includes('pedi')) return 'Nails';
+    if (c.includes('massage') || c.includes('spa')) return 'Spa & Massage';
+    if (c.includes('threading') || c.includes('wax')) return 'Waxing & Threading';
+    if (c.includes('package')) return 'Packages';
+    return 'Others';
+  };
+
+  const mappedServices = services.map(s => ({
+    ...s,
+    category: getSimpleCategory(s.category)
+  }));
+
+  const categories = ['All', ...new Set(mappedServices.map((s: any) => s.category))] as string[];
+  const existingCategories = Array.from(new Set(mappedServices.filter((s: any) => !s.isPackage).map((s: any) => s.category))) as string[];
 
   const handleAddService = (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +114,8 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
       ...cart, 
       { 
         ...service, 
-        cartId: Math.random().toString(36).substr(2, 9),
+        cartId: Math.random().toString(36).substring(2, 9),
+        staffIds: service.isPackage ? undefined : [],
         packageStaff: service.isPackage
           ? service.packageServices.reduce((acc: any, sub: any) => {
               acc[sub.name] = [];
@@ -140,7 +155,9 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
     const packageStaffIds = cart.flatMap(item => 
       item.isPackage ? Object.values(item.packageStaff || {}).flat() as string[] : []
     );
-    const regularStaffIds = cart.some(item => !item.isPackage) ? selectedStaffIds : [];
+    const regularStaffIds = cart.flatMap(item => 
+      !item.isPackage ? (item.staffIds || []) : []
+    );
     const uniqueStaffIds = Array.from(new Set([...packageStaffIds, ...regularStaffIds]));
     const selectedStaffDetails = staff.filter(s => uniqueStaffIds.includes(s.id));
     const contributingStaffNames = selectedStaffDetails.map(s => s.name).join(', ');
@@ -154,19 +171,22 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
         // Proportional package price share in the total transaction amount (after discounts/redeemed points)
         const packageTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
         
-        // Sum of sub-service original prices to distribute revenue proportionally
-        const subServicesSum = item.packageServices ? item.packageServices.reduce((sum: number, sub: any) => sum + sub.price, 0) : 0;
+        const numServices = item.packageServices ? item.packageServices.length : 0;
 
-        if (item.packageServices) {
+        if (numServices > 0 && item.packageServices) {
+          // Each sub-service is valued equally on the package price
+          const subServicePrice = item.price / numServices;
+          // Each sub-service share of the final total billed amount
+          const subServiceBilledShare = packageTotalShare / numServices;
+
           item.packageServices.forEach((sub: any) => {
             const assignedIds = item.packageStaff?.[sub.name] || [];
             if (assignedIds.length > 0) {
-              // 5% incentive on the original sub-service price, split among contributors
-              const incentiveSplit = (sub.price * 0.05) / assignedIds.length;
+              // 5% incentive on the equal service price split, split among contributors
+              const incentiveSplit = (subServicePrice * 0.05) / assignedIds.length;
               
-              // Revenue share of this sub-service based on the package total share
-              const subServiceRevenue = subServicesSum > 0 ? (sub.price / subServicesSum) * packageTotalShare : 0;
-              const revenueSplit = subServiceRevenue / assignedIds.length;
+              // Revenue share based on equal billed amount split, split among contributors
+              const revenueSplit = subServiceBilledShare / assignedIds.length;
 
               assignedIds.forEach((id: string) => {
                 staffIncentives[id] = (staffIncentives[id] || 0) + incentiveSplit;
@@ -176,14 +196,15 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
           });
         }
       } else {
-        // Regular service item: uses global selectedStaffIds
+        // Regular service item: uses its own staffIds
         const regularItemTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
+        const assignedIds = item.staffIds || [];
         
-        if (selectedStaffIds.length > 0) {
-          const incentiveSplit = (item.price * 0.05) / selectedStaffIds.length;
-          const revenueSplit = regularItemTotalShare / selectedStaffIds.length;
+        if (assignedIds.length > 0) {
+          const incentiveSplit = (item.price * 0.05) / assignedIds.length;
+          const revenueSplit = regularItemTotalShare / assignedIds.length;
 
-          selectedStaffIds.forEach(id => {
+          assignedIds.forEach((id: string) => {
             staffIncentives[id] = (staffIncentives[id] || 0) + incentiveSplit;
             staffRevenueShare[id] = (staffRevenueShare[id] || 0) + revenueSplit;
           });
@@ -343,7 +364,6 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
       setDiscountValue(0);
       setRedeemedPoints(0);
       setSelectedPaymentMethod(null);
-      setSelectedStaffIds([]);
     }, 3000);
   };
 
@@ -353,11 +373,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
       return;
     }
 
-    if (selectedPaymentMethod === 'UPI') {
-      setShowQRModal(true);
-    } else {
-      finalizePayment();
-    }
+    finalizePayment();
   };
 
   return (
@@ -434,7 +450,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
         </div>
 
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto custom-scrollbar pb-8">
-          {services
+          {mappedServices
             .filter(s => (selectedCategory === 'All' || s.category === selectedCategory) && 
                          s.name.toLowerCase().includes(serviceSearch.toLowerCase()))
             .map(service => (
@@ -527,39 +543,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
             </div>
           )}
 
-          {/* Contributing Staff Multi-Select */}
-          {cart.some(item => !item.isPackage) && (
-            <div className="space-y-2 mt-4 pt-4 border-t border-border">
-              <label className="text-xs font-bold uppercase tracking-widest text-muted block">Contributing Staff</label>
-              {staff.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {staff.map(member => {
-                    const isSelected = selectedStaffIds.includes(member.id);
-                    return (
-                      <button
-                        key={member.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedStaffIds(prev => 
-                            isSelected ? prev.filter(id => id !== member.id) : [...prev, member.id]
-                          );
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                          isSelected 
-                            ? 'bg-accent text-white border-accent' 
-                            : 'bg-surface border-border text-muted hover:text-white hover:border-accent/30'
-                        }`}
-                      >
-                        {member.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted italic">Add staff members in the Staff Tracking tab to choose contributors.</p>
-              )}
-            </div>
-          )}
+
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
@@ -583,55 +567,165 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
                     <Trash2 size={18} />
                   </button>
                 </div>
+
+                {/* Regular Service Staff Assignment Dropdown */}
+                {!item.isPackage && (
+                  <div className="pt-3 border-t border-border/40 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Assigned Staff</p>
+                    {staff.length > 0 ? (
+                      <div className="space-y-2">
+                        {/* Selected Staff Badges */}
+                        {(item.staffIds || []).length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {(item.staffIds || []).map((id: string) => {
+                              const s = staff.find(member => member.id === id);
+                              if (!s) return null;
+                              return (
+                                <span 
+                                  key={id}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent/15 text-accent rounded-full text-xs font-semibold border border-accent/25"
+                                >
+                                  {s.name}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newStaffIds = (item.staffIds || []).filter((sid: string) => sid !== id);
+                                      setCart(prev => prev.map(cartItem => 
+                                        cartItem.cartId === item.cartId 
+                                          ? { ...cartItem, staffIds: newStaffIds }
+                                          : cartItem
+                                      ));
+                                    }}
+                                    className="hover:text-red-500 transition-colors ml-0.5 font-bold"
+                                    title="Remove staff"
+                                  >
+                                    &times;
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        
+                        {/* Dropdown Selector */}
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) return;
+                            const assignedIds = item.staffIds || [];
+                            const newStaffIds = assignedIds.includes(val)
+                              ? assignedIds
+                              : [...assignedIds, val];
+                            setCart(prev => prev.map(cartItem => 
+                              cartItem.cartId === item.cartId 
+                                ? { ...cartItem, staffIds: newStaffIds }
+                                : cartItem
+                            ));
+                          }}
+                          className="w-full bg-surface border border-border rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-accent/50 transition-all text-white"
+                        >
+                          <option value="" className="bg-surface text-muted">Select contributing staff...</option>
+                          {staff.map(member => (
+                            <option key={member.id} value={member.id} className="bg-surface text-white">
+                              {member.name} ({member.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <p className="text-[9px] text-muted italic">No staff found. Add staff in the Staff Tracking tab.</p>
+                    )}
+                  </div>
+                )}
                 
-                {/* Package Sub-Service Staff Assignment Badges */}
+                {/* Package Sub-Service Staff Assignment Dropdown */}
                 {item.isPackage && item.packageServices && (
                   <div className="pt-3 border-t border-border/40 space-y-3">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Package Services Staff Assignment</p>
                     {item.packageServices.map((sub: any) => {
                       const assignedIds = item.packageStaff?.[sub.name] || [];
+                      const numServices = item.packageServices.length;
+                      const subServicePrice = Math.round(item.price / numServices);
+                      
                       return (
-                        <div key={sub.name} className="bg-background/40 p-3 rounded-xl border border-border/30">
-                          <div className="flex justify-between items-center mb-2">
+                        <div key={sub.name} className="bg-background/40 p-3 rounded-xl border border-border/30 space-y-2">
+                          <div className="flex justify-between items-center">
                             <span className="text-xs font-bold text-white">{sub.name}</span>
-                            <span className="text-[10px] text-muted font-bold">Valued at: ₹{sub.price}</span>
+                            <span className="text-[10px] text-muted font-bold">Valued at: ₹{subServicePrice}</span>
                           </div>
+                          
                           {staff.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {staff.map(member => {
-                                const isAssigned = assignedIds.includes(member.id);
-                                return (
-                                  <button
-                                    key={member.id}
-                                    type="button"
-                                    onClick={() => {
-                                      const currentStaffIds = assignedIds;
-                                      const newStaffIds = currentStaffIds.includes(member.id)
-                                        ? currentStaffIds.filter(id => id !== member.id)
-                                        : [...currentStaffIds, member.id];
-                                      
-                                      setCart(prev => prev.map(cartItem => 
-                                        cartItem.cartId === item.cartId 
-                                          ? {
-                                              ...cartItem,
-                                              packageStaff: {
-                                                ...cartItem.packageStaff,
-                                                [sub.name]: newStaffIds
-                                              }
-                                            }
-                                          : cartItem
-                                      ));
-                                    }}
-                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-bold transition-all border ${
-                                      isAssigned 
-                                        ? 'bg-accent text-white border-accent' 
-                                        : 'bg-background border-border text-muted hover:text-white hover:border-accent/30'
-                                    }`}
-                                  >
-                                    {member.name}
-                                  </button>
-                                );
-                              })}
+                            <div className="space-y-2">
+                              {/* Selected Staff Badges */}
+                              {assignedIds.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {assignedIds.map((id: string) => {
+                                    const s = staff.find(member => member.id === id);
+                                    if (!s) return null;
+                                    return (
+                                      <span 
+                                        key={id}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent/15 text-accent rounded-full text-[10px] font-semibold border border-accent/25"
+                                      >
+                                        {s.name}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const newStaffIds = assignedIds.filter((sid: string) => sid !== id);
+                                            setCart(prev => prev.map(cartItem => 
+                                              cartItem.cartId === item.cartId 
+                                                ? {
+                                                    ...cartItem,
+                                                    packageStaff: {
+                                                      ...cartItem.packageStaff,
+                                                      [sub.name]: newStaffIds
+                                                    }
+                                                  }
+                                                : cartItem
+                                            ));
+                                          }}
+                                          className="hover:text-red-500 transition-colors ml-0.5 font-bold"
+                                          title="Remove staff"
+                                        >
+                                          &times;
+                                        </button>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* Dropdown Selector */}
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (!val) return;
+                                  const newStaffIds = assignedIds.includes(val)
+                                    ? assignedIds
+                                    : [...assignedIds, val];
+                                  setCart(prev => prev.map(cartItem => 
+                                    cartItem.cartId === item.cartId 
+                                      ? {
+                                          ...cartItem,
+                                          packageStaff: {
+                                            ...cartItem.packageStaff,
+                                            [sub.name]: newStaffIds
+                                          }
+                                        }
+                                      : cartItem
+                                  ));
+                                }}
+                                className="w-full bg-surface border border-border rounded-xl py-1.5 px-3 text-[10px] focus:outline-none focus:border-accent/50 transition-all text-white"
+                              >
+                                <option value="" className="bg-surface text-muted">Select contributing staff...</option>
+                                {staff.map(member => (
+                                  <option key={member.id} value={member.id} className="bg-surface text-white">
+                                    {member.name} ({member.role})
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           ) : (
                             <p className="text-[9px] text-muted italic">No staff found. Add staff in the Staff Tracking tab.</p>
@@ -743,9 +837,16 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
                 }
               }
 
-              if (hasRegular && selectedStaffIds.length === 0) {
-                alert('Please select at least one contributing staff member in the sidebar.');
-                return;
+              if (hasRegular) {
+                for (const item of cart) {
+                  if (!item.isPackage) {
+                    const assigned = item.staffIds || [];
+                    if (assigned.length === 0) {
+                      alert(`Please assign at least one contributing staff member to the ${item.name} service.`);
+                      return;
+                    }
+                  }
+                }
               }
 
               setIsCheckoutOpen(true);
