@@ -73,7 +73,21 @@ export default function App() {
 
   const [transactions, setTransactions] = useState<any[]>(() => {
     const saved = localStorage.getItem('trendz_transactions');
-    return saved ? JSON.parse(saved) : initialTransactions;
+    if (saved) {
+      try {
+        const txs = JSON.parse(saved);
+        // Self-healing: If cache has transactions but all of them are mapped to ST-TRENDZ (the old bug),
+        // clear it so it falls back to the fresh, synchronized Supabase database/mockData list.
+        const hasOtherStaff = txs.some((tx: any) => tx.staffIds && tx.staffIds.some((id: string) => id !== 'ST-TRENDZ'));
+        if (!hasOtherStaff && txs.length > 50) {
+          console.warn("Auto-cleared corrupted ST-TRENDZ-only transaction cache.");
+          localStorage.removeItem('trendz_transactions');
+          return initialTransactions;
+        }
+        return txs;
+      } catch (e) {}
+    }
+    return initialTransactions;
   });
 
   const [settings, setSettings] = useState(() => {
