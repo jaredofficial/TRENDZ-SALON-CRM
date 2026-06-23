@@ -96,20 +96,11 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
           </div>
         </div>
 
-        <div className="p-6 bg-surface/50 border-t border-border mt-auto space-y-3">
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={() => simulateVisit(client.name)}
-            className="w-full bg-accent/10 text-accent border border-accent/30 py-4 rounded-2xl font-bold hover:bg-accent/20 transition-all flex items-center justify-center gap-2"
-          >
-            <CheckCircle2 size={18} />
-            Send Visit Confirmation Alert
-          </motion.button>
-
-          {(() => {
-            const days = getDaysSinceLastVisit(client.lastVisit);
-            if (days !== null && days >= 30) {
-              return (
+        {(() => {
+          const days = getDaysSinceLastVisit(client.lastVisit);
+          if (days !== null && days >= 30) {
+            return (
+              <div className="p-6 bg-surface/50 border-t border-border mt-auto space-y-3">
                 <motion.button
                   whileTap={{ scale: 0.95 }}
                   onClick={() => sendReengagementAlert(client)}
@@ -118,11 +109,11 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
                   <MessageSquare size={18} />
                   Send {days >= 60 ? '60-Day' : '30-Day'} Retention Message
                 </motion.button>
-              );
-            }
-            return null;
-          })()}
-        </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
     );
   };
