@@ -71,14 +71,15 @@ function parseExcelDate(rawVal: any, sheetMonthIndex: number, sheetYear: number)
 
 // 8 core staff members mapping
 const initialStaff = [
-  { id: 'ST-ADNAN', name: 'Adnan', role: 'Stylist', phone: '+919999999901', email: 'adnan@trendzsalon.com', instagram: '@adnan' },
-  { id: 'ST-RABIA', name: 'Rabia', role: 'Stylist', phone: '+919999999902', email: 'rabia@trendzsalon.com', instagram: '@rabia' },
-  { id: 'ST-ANITA', name: 'Anita', role: 'Senior Stylist', phone: '+919999999903', email: 'anita@trendzsalon.com', instagram: '@anita' },
+  { id: 'ST-ADNAN', name: 'Adnan', role: 'junior hair stylist', phone: '+919999999901', email: 'adnan@trendzsalon.com', instagram: '@adnan' },
+  { id: 'ST-RABIA', name: 'Rabia', role: 'Pedicurist', phone: '+919999999902', email: 'rabia@trendzsalon.com', instagram: '@rabia' },
+  { id: 'ST-ANITA', name: 'Anita', role: 'beautician', phone: '+919999999903', email: 'anita@trendzsalon.com', instagram: '@anita' },
   { id: 'ST-VICKY', name: 'Vicky', role: 'Senior Stylist', phone: '+919999999904', email: 'vicky@trendzsalon.com', instagram: '@vicky' },
-  { id: 'ST-WASIF', name: 'Wasif', role: 'Owner & Stylist', phone: '+919999999905', email: 'wasif@trendzsalon.com', instagram: '@wasif' },
-  { id: 'ST-JULIANA', name: 'Juliana', role: 'Stylist', phone: '+919999999906', email: 'juliana@trendzsalon.com', instagram: '@juliana' },
+  { id: 'ST-WASIF', name: 'Wasif', role: 'hairstylist', phone: '+919999999905', email: 'wasif@trendzsalon.com', instagram: '@wasif' },
+  { id: 'ST-JULIANA', name: 'Juliana', role: 'Pedicurist', phone: '+919999999906', email: 'juliana@trendzsalon.com', instagram: '@juliana' },
   { id: 'ST-ZOYA', name: 'Zoya', role: 'Stylist', phone: '+919999999907', email: 'zoya@trendzsalon.com', instagram: '@zoya' },
-  { id: 'ST-TRENDZ', name: 'Trendz', role: 'Management', phone: '+919999999908', email: 'management@trendzsalon.com', instagram: '@trendz' }
+  { id: 'ST-TRENDZ', name: 'Trendz', role: 'Management', phone: '+919999999908', email: 'management@trendzsalon.com', instagram: '@trendz' },
+  { id: 'ST-EJAZ', name: 'Ejaz', role: 'receptionist', phone: '+919999999909', email: 'ejaz@trendzsalon.com', instagram: '@ejaz' }
 ];
 
 const staffMap: Record<string, typeof initialStaff[0]> = {};

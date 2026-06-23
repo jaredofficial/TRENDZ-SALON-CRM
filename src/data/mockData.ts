@@ -128,7 +128,7 @@ export const staffMembers: any[] = [
   {
     "id": "ST-ADNAN",
     "name": "Adnan",
-    "role": "Stylist",
+    "role": "junior hair stylist",
     "phone": "+919999999901",
     "email": "adnan@trendzsalon.com",
     "instagram": "@adnan"
@@ -136,7 +136,7 @@ export const staffMembers: any[] = [
   {
     "id": "ST-RABIA",
     "name": "Rabia",
-    "role": "Stylist",
+    "role": "Pedicurist",
     "phone": "+919999999902",
     "email": "rabia@trendzsalon.com",
     "instagram": "@rabia"
@@ -144,7 +144,7 @@ export const staffMembers: any[] = [
   {
     "id": "ST-ANITA",
     "name": "Anita",
-    "role": "Senior Stylist",
+    "role": "beautician",
     "phone": "+919999999903",
     "email": "anita@trendzsalon.com",
     "instagram": "@anita"
@@ -160,7 +160,7 @@ export const staffMembers: any[] = [
   {
     "id": "ST-WASIF",
     "name": "Wasif",
-    "role": "Owner & Stylist",
+    "role": "hairstylist",
     "phone": "+919999999905",
     "email": "wasif@trendzsalon.com",
     "instagram": "@wasif"
@@ -168,7 +168,7 @@ export const staffMembers: any[] = [
   {
     "id": "ST-JULIANA",
     "name": "Juliana",
-    "role": "Stylist",
+    "role": "Pedicurist",
     "phone": "+919999999906",
     "email": "juliana@trendzsalon.com",
     "instagram": "@juliana"
@@ -188,6 +188,14 @@ export const staffMembers: any[] = [
     "phone": "+919999999908",
     "email": "management@trendzsalon.com",
     "instagram": "@trendz"
+  },
+  {
+    "id": "ST-EJAZ",
+    "name": "Ejaz",
+    "role": "receptionist",
+    "phone": "+919999999909",
+    "email": "ejaz@trendzsalon.com",
+    "instagram": "@ejaz"
   }
 ];
 
