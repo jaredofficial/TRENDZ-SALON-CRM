@@ -10,7 +10,8 @@ import {
   Sparkles,
   Download,
   X,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -33,12 +34,24 @@ interface DashboardProps {
   userName?: string;
   appointments: Appointment[];
   transactions: any[];
+  setTransactions: React.Dispatch<React.SetStateAction<any[]>>;
   clients: any[];
+  setClients: React.Dispatch<React.SetStateAction<any[]>>;
   staff: any[];
   settings?: any;
 }
 
-export default function Dashboard({ onNavigate, userName, appointments = [], transactions = [], clients = [], staff = [], settings }: DashboardProps) {
+export default function Dashboard({ 
+  onNavigate, 
+  userName, 
+  appointments = [], 
+  transactions = [], 
+  setTransactions, 
+  clients = [], 
+  setClients, 
+  staff = [], 
+  settings 
+}: DashboardProps) {
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isLoadingAI, setIsLoadingAI] = useState(false);
@@ -236,6 +249,64 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
       return;
     }
     downloadCSV(filtered, `Trendz_Billing_YTD_${currentYear}`);
+  };
+
+  const handleDeleteTransaction = async (tx: any) => {
+    if (!confirm(`Are you sure you want to delete bill ${tx.id} for ₹${tx.total}? This will permanently reverse the transaction and update customer visits, spent history, and loyalty points.`)) {
+      return;
+    }
+
+    try {
+      // 1. Delete from Supabase
+      const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
+      if (error) {
+        console.error("Failed to delete transaction from Supabase:", error);
+        alert(`Failed to delete transaction from database: ${error.message}`);
+        return;
+      }
+
+      // 2. Revert customer statistics if registered client (phone is not 'N/A' or empty)
+      if (tx.phone && tx.phone !== 'N/A') {
+        const matchedClient = clients.find(c => c.phone === tx.phone);
+        if (matchedClient) {
+          const newVisits = Math.max(0, (matchedClient.visits || 0) - 1);
+          const newSpent = Math.max(0, (matchedClient.totalSpent || 0) - tx.total);
+          const newPoints = Math.round(newSpent * 0.1);
+
+          // Find the next most recent transaction for this client to determine lastVisit
+          const remainingTxs = transactions.filter(t => t.phone === tx.phone && t.id !== tx.id);
+          const lastVisit = remainingTxs.length > 0 ? remainingTxs[0].date : 'N/A';
+
+          const { error: clientError } = await supabase.from('clients').upsert({
+            id: matchedClient.id,
+            name: matchedClient.name,
+            phone: matchedClient.phone,
+            total_visits: newVisits,
+            total_spent: newSpent,
+            last_visit: lastVisit
+          });
+
+          if (clientError) {
+            console.error("Failed to sync client reversion to Supabase:", clientError);
+          }
+
+          setClients(prev => prev.map(c => c.id === matchedClient.id ? {
+            ...c,
+            visits: newVisits,
+            totalSpent: newSpent,
+            points: newPoints,
+            lastVisit: lastVisit
+          } : c));
+        }
+      }
+
+      // 3. Remove from local transactions state
+      setTransactions(prev => prev.filter(t => t.id !== tx.id));
+      alert("Bill successfully deleted and records adjusted.");
+    } catch (err: any) {
+      console.error("Error during transaction deletion:", err);
+      alert(`An error occurred: ${err.message}`);
+    }
   };
 
   const generateAIReport = async () => {
@@ -826,6 +897,9 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
                           <th className="py-3 px-4">Services Taken</th>
                           <th className="py-3 px-4">Contributing Staff</th>
                           <th className="py-3 px-4 text-right">Amount Billed</th>
+                          {(revenueDetailsType === 'daily' || revenueDetailsType === 'monthly') && (
+                            <th className="py-3 px-4 text-center">Actions</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/30 text-sm">
@@ -848,6 +922,17 @@ export default function Dashboard({ onNavigate, userName, appointments = [], tra
                             <td className="py-4 px-4 font-bold text-white text-right whitespace-nowrap">
                               {formatCurrency(tx.total)}
                             </td>
+                            {(revenueDetailsType === 'daily' || revenueDetailsType === 'monthly') && (
+                              <td className="py-4 px-4 text-center whitespace-nowrap">
+                                <button
+                                  onClick={() => handleDeleteTransaction(tx)}
+                                  className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-lg border border-red-500/20 hover:border-red-500 transition-all cursor-pointer"
+                                  title="Delete Bill"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

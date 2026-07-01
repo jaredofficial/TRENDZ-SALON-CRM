@@ -13,7 +13,9 @@ import {
   CalendarDays,
   CheckCircle2,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Search,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Appointment } from '../types';
@@ -34,6 +36,7 @@ export default function Appointments({ appointments, setAppointments, clients = 
   // Modals state
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [reschedulingAppt, setReschedulingAppt] = useState<Appointment | null>(null);
+  const [isBooking, setIsBooking] = useState(false);
   
   // Book Form State
   const [clientSearch, setClientSearch] = useState('');
@@ -41,7 +44,9 @@ export default function Appointments({ appointments, setAppointments, clients = 
   const [customPhone, setCustomPhone] = useState('+91');
   const [bookDate, setBookDate] = useState('');
   const [bookTime, setBookTime] = useState('10:00 AM');
-  const [selectedServices, setSelectedServices] = useState<string[]>(['1']);
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [isServiceDropdownOpen, setIsServiceDropdownOpen] = useState(false);
 
   // Reschedule Form State
   const [rescheduleDate, setRescheduleDate] = useState('');
@@ -131,150 +136,174 @@ export default function Appointments({ appointments, setAppointments, clients = 
 
   const handleBookAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBooking) return;
     if (!clientSearch && !selectedClient) return;
-
-    const selectedServiceObjs = selectedServices.map(id => services.find(s => s.id === id)).filter(Boolean) as any[];
-    const serviceNames = selectedServiceObjs.map(s => s.name).join(', ');
-    const totalPrice = selectedServiceObjs.reduce((sum, s) => sum + s.price, 0);
-
-    const formatPhoneNumber = (ph: string) => {
-      const trimmed = ph.trim();
-      if (!trimmed) return '+91';
-      const digits = trimmed.replace(/[\s-()]/g, '');
-      if (/^\d{10}$/.test(digits)) return `+91${digits}`;
-      if (/^91\d{10}$/.test(digits)) return `+${digits}`;
-      if (/^\d+$/.test(digits)) return `+91${digits}`;
-      return trimmed;
-    };
-    const clientName = selectedClient ? selectedClient.name : clientSearch;
-    const clientPhone = selectedClient ? selectedClient.phone : customPhone;
-    const formattedPhone = formatPhoneNumber(clientPhone);
-    const finalPhone = formattedPhone || '+91 99999 99999';
-    const finalDate = bookDate || formatDateString(new Date());
-
-    const newAppt: Appointment = {
-      id: Math.random().toString(36).substring(2, 9),
-      clientName,
-      phone: finalPhone,
-      date: finalDate,
-      time: bookTime,
-      service: serviceNames,
-      status: 'booked',
-      price: totalPrice
-    };
-
-    // Save appointment to Supabase
-    supabase.from('appointments').upsert({
-      id: newAppt.id,
-      client_name: newAppt.clientName,
-      phone: newAppt.phone,
-      service: newAppt.service,
-      date: newAppt.date,
-      time: newAppt.time,
-      status: newAppt.status
-    }).then(({ error }) => {
-      if (error) console.error("Failed to sync new appointment to Supabase:", error);
-    });
-
-    setAppointments(prev => [newAppt, ...prev]);
-
-    // 1. Trigger Booking Confirmation WhatsApp
-    try {
-      await fetch('/api/automation/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'appointment_confirmed',
-          customer: { name: clientName, phone: finalPhone },
-          template_id: 'appointment_confirmed_wa_text_v1',
-          variables: [
-            `${finalDate} at ${bookTime}`,
-            serviceNames,
-            finalPhone
-          ]
-        })
-      });
-    } catch (err) {
-      console.error('Failed to send booking confirmation WhatsApp:', err);
+    if (selectedServices.length === 0) {
+      alert("Please select at least one service.");
+      return;
     }
 
-    // 2. Trigger Booking Reminder WhatsApp (calculated 5m before, fallback to 10s for testing)
+    setIsBooking(true);
+
     try {
-      await fetch('/api/automation/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'appointment_reminder',
-          customer: { name: clientName, phone: finalPhone },
-          template_id: 'appointment_reminder_text',
-          appointmentDate: finalDate,
-          appointmentTime: bookTime,
-          variables: [
-            finalDate,
-            bookTime
-          ]
-        })
+      const selectedServiceObjs = selectedServices.map(id => services.find(s => s.id === id)).filter(Boolean) as any[];
+      const serviceNames = selectedServiceObjs.map(s => s.name).join(', ');
+      const totalPrice = selectedServiceObjs.reduce((sum, s) => sum + s.price, 0);
+
+      const formatPhoneNumber = (ph: string) => {
+        const trimmed = ph.trim();
+        if (!trimmed) return '+91';
+        const digits = trimmed.replace(/[\s-()]/g, '');
+        if (/^\d{10}$/.test(digits)) return `+91${digits}`;
+        if (/^91\d{10}$/.test(digits)) return `+${digits}`;
+        if (/^\d+$/.test(digits)) return `+91${digits}`;
+        return trimmed;
+      };
+      const clientName = selectedClient ? selectedClient.name : clientSearch;
+      const clientPhone = selectedClient ? selectedClient.phone : customPhone;
+      const formattedPhone = formatPhoneNumber(clientPhone);
+      const finalPhone = formattedPhone || '+91 99999 99999';
+      const finalDate = bookDate || formatDateString(new Date());
+
+      const newAppt: Appointment = {
+        id: Math.random().toString(36).substring(2, 9),
+        clientName,
+        phone: finalPhone,
+        date: finalDate,
+        time: bookTime,
+        service: serviceNames,
+        status: 'booked',
+        price: totalPrice
+      };
+
+      // Save appointment to Supabase
+      supabase.from('appointments').upsert({
+        id: newAppt.id,
+        client_name: newAppt.clientName,
+        phone: newAppt.phone,
+        service: newAppt.service,
+        date: newAppt.date,
+        time: newAppt.time,
+        status: newAppt.status
+      }).then(({ error }) => {
+        if (error) console.error("Failed to sync new appointment to Supabase:", error);
       });
+
+      setAppointments(prev => [newAppt, ...prev]);
+
+      // 1. Trigger Booking Confirmation WhatsApp
+      try {
+        await fetch('/api/automation/trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'appointment_confirmed',
+            customer: { name: clientName, phone: finalPhone },
+            template_id: 'appointment_confirmed_wa_text_v1',
+            variables: [
+              `${finalDate} at ${bookTime}`,
+              serviceNames,
+              finalPhone
+            ]
+          })
+        });
+      } catch (err) {
+        console.error('Failed to send booking confirmation WhatsApp:', err);
+      }
+
+      // 2. Trigger Booking Reminder WhatsApp (calculated 5m before, fallback to 10s for testing)
+      try {
+        await fetch('/api/automation/trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'appointment_reminder',
+            customer: { name: clientName, phone: finalPhone },
+            template_id: 'appointment_reminder_text',
+            appointmentDate: finalDate,
+            appointmentTime: bookTime,
+            variables: [
+              finalDate,
+              bookTime
+            ]
+          })
+        });
+      } catch (err) {
+        console.error('Failed to schedule appointment reminder WhatsApp:', err);
+      }
+      
+      // Reset Form
+      setClientSearch('');
+      setSelectedClient(null);
+      setCustomPhone('+91');
+      setBookDate('');
+      setBookTime('10:00 AM');
+      setSelectedServices([]);
+      setServiceSearch('');
+      setIsServiceDropdownOpen(false);
+      setIsBookModalOpen(false);
     } catch (err) {
-      console.error('Failed to schedule appointment reminder WhatsApp:', err);
+      console.error('Error during handleBookAppointment:', err);
+    } finally {
+      setIsBooking(false);
     }
-    
-    // Reset Form
-    setClientSearch('');
-    setSelectedClient(null);
-    setCustomPhone('+91');
-    setBookDate('');
-    setBookTime('10:00 AM');
-    setSelectedServices(['1']);
-    setIsBookModalOpen(false);
   };
 
   const handleReschedule = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBooking) return;
     if (!reschedulingAppt) return;
 
-    // Sync rescheduled appointment to Supabase
-    supabase.from('appointments').upsert({
-      id: reschedulingAppt.id,
-      client_name: reschedulingAppt.clientName,
-      phone: reschedulingAppt.phone,
-      service: reschedulingAppt.service,
-      date: rescheduleDate,
-      time: rescheduleTime,
-      status: 'rescheduled'
-    }).then(({ error }) => {
-      if (error) console.error("Failed to sync rescheduled appointment to Supabase:", error);
-    });
+    setIsBooking(true);
 
-    setAppointments(prev => 
-      prev.map(appt => 
-        appt.id === reschedulingAppt.id 
-          ? { ...appt, date: rescheduleDate, time: rescheduleTime, status: 'rescheduled' } 
-          : appt
-      )
-    );
-
-    // Trigger Reschedule confirmation WhatsApp
     try {
-      await fetch('/api/automation/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'appointment_rescheduled',
-          customer: { name: reschedulingAppt.clientName, phone: reschedulingAppt.phone },
-          template_id: 'appointment_reschedule_text',
-          variables: [
-            reschedulingAppt.service,
-            rescheduleDate,
-            rescheduleTime
-          ]
-        })
+      // Sync rescheduled appointment to Supabase
+      supabase.from('appointments').upsert({
+        id: reschedulingAppt.id,
+        client_name: reschedulingAppt.clientName,
+        phone: reschedulingAppt.phone,
+        service: reschedulingAppt.service,
+        date: rescheduleDate,
+        time: rescheduleTime,
+        status: 'rescheduled'
+      }).then(({ error }) => {
+        if (error) console.error("Failed to sync rescheduled appointment to Supabase:", error);
       });
-    } catch (err) {
-      console.error('Failed to send reschedule confirmation WhatsApp:', err);
-    }
 
-    setReschedulingAppt(null);
+      setAppointments(prev => 
+        prev.map(appt => 
+          appt.id === reschedulingAppt.id 
+            ? { ...appt, date: rescheduleDate, time: rescheduleTime, status: 'rescheduled' } 
+            : appt
+        )
+      );
+
+      // Trigger Reschedule confirmation WhatsApp
+      try {
+        await fetch('/api/automation/trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'appointment_rescheduled',
+            customer: { name: reschedulingAppt.clientName, phone: reschedulingAppt.phone },
+            template_id: 'appointment_reschedule_text',
+            variables: [
+              reschedulingAppt.service,
+              rescheduleDate,
+              rescheduleTime
+            ]
+          })
+        });
+      } catch (err) {
+        console.error('Failed to send reschedule confirmation WhatsApp:', err);
+      }
+
+      setReschedulingAppt(null);
+    } catch (err) {
+      console.error('Error during handleReschedule:', err);
+    } finally {
+      setIsBooking(false);
+    }
   };
 
   const handleCancelAppointment = (id: string) => {
@@ -732,58 +761,83 @@ export default function Appointments({ appointments, setAppointments, clients = 
                       </div>
                     </div>
 
-                    {/* Service Selection (Add One-by-One) */}
+                    {/* Selected Services List */}
                     <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold uppercase tracking-widest text-muted">Services</label>
-                        {selectedServices.length < services.length && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const nextAvailable = services.find(s => !selectedServices.includes(s.id));
-                              if (nextAvailable) {
-                                setSelectedServices(prev => [...prev, nextAvailable.id]);
-                              }
-                            }}
-                            className="text-xs font-bold text-accent hover:underline flex items-center gap-1"
-                          >
-                            <Plus size={14} /> Add Service
-                          </button>
-                        )}
+                      <label className="text-xs font-bold uppercase tracking-widest text-muted block">Selected Services</label>
+                      {selectedServices.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-2 border border-border/50 rounded-xl bg-surface/50">
+                          {selectedServices.map((id) => {
+                            const s = services.find(srv => srv.id === id);
+                            if (!s) return null;
+                            return (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 text-accent rounded-xl text-xs font-semibold border border-accent/25"
+                              >
+                                <span>{s.name} (₹{s.price})</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedServices(prev => prev.filter(sid => sid !== id))}
+                                  className="hover:text-red-500 hover:scale-110 transition-all ml-1 font-bold cursor-pointer text-sm leading-none"
+                                  title="Remove service"
+                                >
+                                  &times;
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted italic p-3 bg-surface/30 border border-dashed border-border rounded-xl text-center">
+                          No services selected. Search and add services below.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Service Search Autocomplete */}
+                    <div className="space-y-2 relative">
+                      <label className="text-xs font-bold uppercase tracking-widest text-muted block">Search Services</label>
+                      <div className="relative">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={16} />
+                        <input
+                          type="text"
+                          placeholder="Search and add services..."
+                          value={serviceSearch}
+                          onChange={(e) => {
+                            setServiceSearch(e.target.value);
+                            setIsServiceDropdownOpen(true);
+                          }}
+                          onFocus={() => setIsServiceDropdownOpen(true)}
+                          onBlur={() => setTimeout(() => setIsServiceDropdownOpen(false), 250)}
+                          className="w-full bg-surface border border-border rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-accent/50 text-sm"
+                        />
                       </div>
                       
-                      <div className="space-y-3 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                        {selectedServices.map((serviceId, index) => (
-                          <div key={index} className="flex gap-2 items-center">
-                            <select
-                              value={serviceId}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setSelectedServices(prev => prev.map((s, idx) => idx === index ? val : s));
-                              }}
-                              className="flex-1 bg-surface border border-border rounded-xl py-2.5 px-4 focus:outline-none focus:border-accent/50 text-sm"
-                            >
-                              {services
-                                .filter(s => s.id === serviceId || !selectedServices.includes(s.id))
-                                .map(s => (
-                                  <option key={s.id} value={s.id} className="bg-surface text-white">
-                                    {s.name} (₹{s.price})
-                                  </option>
-                                ))}
-                            </select>
-                            
-                            {selectedServices.length > 1 && (
+                      {/* Autocomplete list */}
+                      {isServiceDropdownOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-surface border border-border rounded-xl shadow-2xl z-[150] overflow-hidden max-h-40 overflow-y-auto">
+                          {services
+                            .filter(s => !selectedServices.includes(s.id) && s.name.toLowerCase().includes(serviceSearch.toLowerCase()))
+                            .map(s => (
                               <button
+                                key={s.id}
                                 type="button"
-                                onClick={() => setSelectedServices(prev => prev.filter((_, idx) => idx !== index))}
-                                  className="p-2.5 bg-surface-hover hover:bg-red-500/10 border border-border hover:border-red-500/30 text-muted hover:text-red-500 rounded-xl transition-all"
+                                onClick={() => {
+                                  setSelectedServices(prev => [...prev, s.id]);
+                                  setServiceSearch('');
+                                  setIsServiceDropdownOpen(false);
+                                }}
+                                className="w-full p-3 text-left hover:bg-white/5 transition-all text-sm border-b border-border/50 last:border-b-0 flex items-center justify-between"
                               >
-                                <XCircle size={16} />
+                                <span className="font-semibold text-white">{s.name}</span>
+                                <span className="text-xs text-accent font-bold">₹{s.price}</span>
                               </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                            ))}
+                          {services.filter(s => !selectedServices.includes(s.id) && s.name.toLowerCase().includes(serviceSearch.toLowerCase())).length === 0 && (
+                            <div className="p-3 text-xs text-muted text-center">No matching services found</div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Total Price Display */}
@@ -800,20 +854,24 @@ export default function Appointments({ appointments, setAppointments, clients = 
                     <div className="flex gap-4 pt-4">
                       <button
                         type="submit"
-                        className="flex-1 bg-accent text-black font-bold py-3 rounded-xl hover:opacity-95 transition-all text-sm"
+                        disabled={isBooking}
+                        className="flex-1 bg-accent text-black font-bold py-3 rounded-xl hover:opacity-95 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Confirm Booking
                       </button>
                       <button
                         type="button"
+                        disabled={isBooking}
                         onClick={() => {
                           setIsBookModalOpen(false);
                           setClientSearch('');
                           setSelectedClient(null);
                           setCustomPhone('');
-                          setSelectedServices(['1']);
+                          setSelectedServices([]);
+                          setServiceSearch('');
+                          setIsServiceDropdownOpen(false);
                         }}
-                        className="flex-1 py-3 text-muted hover:text-white transition-all text-sm"
+                        className="flex-1 py-3 text-muted hover:text-white transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Cancel
                       </button>
@@ -886,14 +944,16 @@ export default function Appointments({ appointments, setAppointments, clients = 
                     <div className="flex gap-4 pt-4">
                       <button
                         type="submit"
-                        className="flex-1 bg-accent text-black font-bold py-3 rounded-xl hover:opacity-95 transition-all text-sm"
+                        disabled={isBooking}
+                        className="flex-1 bg-accent text-black font-bold py-3 rounded-xl hover:opacity-95 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Update Booking
                       </button>
                       <button
                         type="button"
+                        disabled={isBooking}
                         onClick={() => setReschedulingAppt(null)}
-                        className="flex-1 py-3 text-muted hover:text-white transition-all text-sm"
+                        className="flex-1 py-3 text-muted hover:text-white transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Cancel
                       </button>
@@ -901,6 +961,39 @@ export default function Appointments({ appointments, setAppointments, clients = 
                   </form>
                 </motion.div>
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Booking Loader Overlay */}
+      {createPortal(
+        <AnimatePresence>
+          {isBooking && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="glass p-8 rounded-[2rem] max-w-sm w-full flex flex-col items-center text-center space-y-6"
+              >
+                <div className="relative w-16 h-16 flex items-center justify-center">
+                  <span className="absolute inset-0 rounded-full border-4 border-accent/20"></span>
+                  <span className="absolute inset-0 rounded-full border-4 border-accent border-t-transparent animate-spin"></span>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold text-white">Saving Booking</h3>
+                  <p className="text-xs text-muted leading-relaxed">
+                    Please wait... Booking is being processed. The WhatsApp booking confirmation will be sent within the next 5 minutes.
+                  </p>
+                </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>,

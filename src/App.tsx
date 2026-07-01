@@ -711,9 +711,9 @@ export default function App() {
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, y: -20, filter: 'blur(4px)' }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
               transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.6 }}
               className="h-full"
             >
@@ -723,7 +723,9 @@ export default function App() {
                   userName={currentUser?.name} 
                   appointments={appointments}
                   transactions={transactions}
+                  setTransactions={setTransactions}
                   clients={clients}
+                  setClients={setClients}
                   staff={staff}
                   settings={settings}
                 />

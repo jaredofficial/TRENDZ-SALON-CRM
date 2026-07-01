@@ -44,6 +44,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
   const [redeemedPoints, setRedeemedPoints] = useState(0);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const [serviceSearch, setServiceSearch] = useState('');
   const [posTab, setPosTab] = useState<'services' | 'cart'>('services');
@@ -151,223 +152,231 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   );
 
   const finalizePayment = async () => {
-    // Collect unique staff IDs across all items in the cart
-    const packageStaffIds = cart.flatMap(item => 
-      item.isPackage ? Object.values(item.packageStaff || {}).flat() as string[] : []
-    );
-    const regularStaffIds = cart.flatMap(item => 
-      !item.isPackage ? (item.staffIds || []) : []
-    );
-    const uniqueStaffIds = Array.from(new Set([...packageStaffIds, ...regularStaffIds]));
-    const selectedStaffDetails = staff.filter(s => uniqueStaffIds.includes(s.id));
-    const contributingStaffNames = selectedStaffDetails.map(s => s.name).join(', ');
+    if (isProcessing) return;
+    setIsProcessing(true);
 
-    // Calculate specific incentives and revenue share per staff member
-    const staffIncentives: Record<string, number> = {};
-    const staffRevenueShare: Record<string, number> = {};
+    try {
+      // Collect unique staff IDs across all items in the cart
+      const packageStaffIds = cart.flatMap(item => 
+        item.isPackage ? Object.values(item.packageStaff || {}).flat() as string[] : []
+      );
+      const regularStaffIds = cart.flatMap(item => 
+        !item.isPackage ? (item.staffIds || []) : []
+      );
+      const uniqueStaffIds = Array.from(new Set([...packageStaffIds, ...regularStaffIds]));
+      const selectedStaffDetails = staff.filter(s => uniqueStaffIds.includes(s.id));
+      const contributingStaffNames = selectedStaffDetails.map(s => s.name).join(', ');
 
-    cart.forEach(item => {
-      if (item.isPackage) {
-        // Proportional package price share in the total transaction amount (after discounts/redeemed points)
-        const packageTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
-        
-        const numServices = item.packageServices ? item.packageServices.length : 0;
+      // Calculate specific incentives and revenue share per staff member
+      const staffIncentives: Record<string, number> = {};
+      const staffRevenueShare: Record<string, number> = {};
 
-        if (numServices > 0 && item.packageServices) {
-          // Each sub-service is valued equally on the package price
-          const subServicePrice = item.price / numServices;
-          // Each sub-service share of the final total billed amount
-          const subServiceBilledShare = packageTotalShare / numServices;
+      cart.forEach(item => {
+        if (item.isPackage) {
+          // Proportional package price share in the total transaction amount (after discounts/redeemed points)
+          const packageTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
+          
+          const numServices = item.packageServices ? item.packageServices.length : 0;
 
-          item.packageServices.forEach((sub: any) => {
-            const assignedIds = item.packageStaff?.[sub.name] || [];
-            if (assignedIds.length > 0) {
-              // 5% incentive on the equal service price split, split among contributors
-              const incentiveSplit = (subServicePrice * 0.05) / assignedIds.length;
-              
-              // Revenue share based on equal billed amount split, split among contributors
-              const revenueSplit = subServiceBilledShare / assignedIds.length;
+          if (numServices > 0 && item.packageServices) {
+            // Each sub-service is valued equally on the package price
+            const subServicePrice = item.price / numServices;
+            // Each sub-service share of the final total billed amount
+            const subServiceBilledShare = packageTotalShare / numServices;
 
-              assignedIds.forEach((id: string) => {
-                staffIncentives[id] = (staffIncentives[id] || 0) + incentiveSplit;
-                staffRevenueShare[id] = (staffRevenueShare[id] || 0) + revenueSplit;
-              });
-            }
-          });
+            item.packageServices.forEach((sub: any) => {
+              const assignedIds = item.packageStaff?.[sub.name] || [];
+              if (assignedIds.length > 0) {
+                // 5% incentive on the equal service price split, split among contributors
+                const incentiveSplit = (subServicePrice * 0.05) / assignedIds.length;
+                
+                // Revenue share based on equal billed amount split, split among contributors
+                const revenueSplit = subServiceBilledShare / assignedIds.length;
+
+                assignedIds.forEach((id: string) => {
+                  staffIncentives[id] = (staffIncentives[id] || 0) + incentiveSplit;
+                  staffRevenueShare[id] = (staffRevenueShare[id] || 0) + revenueSplit;
+                });
+              }
+            });
+          }
+        } else {
+          // Regular service item: uses its own staffIds
+          const regularItemTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
+          const assignedIds = item.staffIds || [];
+          
+          if (assignedIds.length > 0) {
+            const incentiveSplit = (item.price * 0.05) / assignedIds.length;
+            const revenueSplit = regularItemTotalShare / assignedIds.length;
+
+            assignedIds.forEach((id: string) => {
+              staffIncentives[id] = (staffIncentives[id] || 0) + incentiveSplit;
+              staffRevenueShare[id] = (staffRevenueShare[id] || 0) + revenueSplit;
+            });
+          }
         }
-      } else {
-        // Regular service item: uses its own staffIds
-        const regularItemTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
-        const assignedIds = item.staffIds || [];
-        
-        if (assignedIds.length > 0) {
-          const incentiveSplit = (item.price * 0.05) / assignedIds.length;
-          const revenueSplit = regularItemTotalShare / assignedIds.length;
-
-          assignedIds.forEach((id: string) => {
-            staffIncentives[id] = (staffIncentives[id] || 0) + incentiveSplit;
-            staffRevenueShare[id] = (staffRevenueShare[id] || 0) + revenueSplit;
-          });
-        }
-      }
-    });
-
-    // Compute average incentive for backward compatibility
-    const incentiveAmount = uniqueStaffIds.length > 0 
-      ? Object.values(staffIncentives).reduce((sum, val) => sum + val, 0) / uniqueStaffIds.length
-      : 0;
-
-    // Save transaction
-    const newTransaction = {
-      id: `TX-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
-      date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-      timestamp: new Date().toISOString(),
-      clientName: selectedCustomer ? selectedCustomer.name : 'Walk-in Customer',
-      phone: selectedCustomer ? selectedCustomer.phone : 'N/A',
-      services: cart.map(item => item.name).join(', '),
-      total: total,
-      paymentMethod: selectedPaymentMethod || 'Cash',
-      staffIds: uniqueStaffIds,
-      staffNames: contributingStaffNames || 'None',
-      incentivePerStaff: incentiveAmount,
-      staffIncentives,
-      staffRevenueShare
-    };
-
-    setTransactions(prev => [newTransaction, ...prev]);
-
-    // Push new transaction to Supabase
-    supabase.from('transactions').insert({
-      id: newTransaction.id,
-      client_name: newTransaction.clientName,
-      phone: newTransaction.phone,
-      services: newTransaction.services,
-      total: newTransaction.total,
-      payment_method: newTransaction.paymentMethod,
-      created_at: newTransaction.timestamp
-    }).then(({ error }) => {
-      if (error) console.error("Failed to sync transaction to Supabase:", error);
-    });
-
-    // Update staff statistics in the local state
-    if (uniqueStaffIds.length > 0) {
-      setClients(prevClients => prevClients); // Trick to trigger sync/updates
-    }
-
-    // Update customer stats (visits, loyalty points, spent)
-    if (selectedCustomer) {
-      const newVisits = (selectedCustomer.visits || 0) + 1;
-      const newSpent = (selectedCustomer.totalSpent || 0) + total;
-      
-      supabase.from('clients').upsert({
-        id: selectedCustomer.id,
-        name: selectedCustomer.name,
-        phone: selectedCustomer.phone,
-        total_visits: newVisits,
-        total_spent: newSpent,
-        last_visit: new Date().toISOString().split('T')[0]
-      }).then(({ error }) => {
-        if (error) console.error("Failed to sync client update to Supabase:", error);
       });
 
-      setClients(prevClients => prevClients.map(client => {
-        if (client.id === selectedCustomer.id) {
-          const newVisitsVal = (client.visits || 0) + 1;
-          const newSpentVal = (client.totalSpent || 0) + total;
-          // earn 10% points on total bill
-          const earnedPoints = Math.round(total * 0.1);
-          const newPoints = (client.points || 0) + earnedPoints - redeemedPoints;
-          return {
-            ...client,
-            visits: newVisitsVal,
-            totalSpent: newSpentVal,
-            points: newPoints,
-            lastVisit: new Date().toISOString().split('T')[0],
-            last30DayReminderCycle: 'pending',
-            last60DayReminderCycle: 'pending'
-          };
+      // Compute average incentive for backward compatibility
+      const incentiveAmount = uniqueStaffIds.length > 0 
+        ? Object.values(staffIncentives).reduce((sum, val) => sum + val, 0) / uniqueStaffIds.length
+        : 0;
+
+      // Save transaction
+      const newTransaction = {
+        id: `TX-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+        date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+        timestamp: new Date().toISOString(),
+        clientName: selectedCustomer ? selectedCustomer.name : 'Walk-in Customer',
+        phone: selectedCustomer ? selectedCustomer.phone : 'N/A',
+        services: cart.map(item => item.name).join(', '),
+        total: total,
+        paymentMethod: selectedPaymentMethod || 'Cash',
+        staffIds: uniqueStaffIds,
+        staffNames: contributingStaffNames || 'None',
+        incentivePerStaff: incentiveAmount,
+        staffIncentives,
+        staffRevenueShare
+      };
+
+      setTransactions(prev => [newTransaction, ...prev]);
+
+      // Push new transaction to Supabase
+      supabase.from('transactions').insert({
+        id: newTransaction.id,
+        client_name: newTransaction.clientName,
+        phone: newTransaction.phone,
+        services: newTransaction.services,
+        total: newTransaction.total,
+        payment_method: newTransaction.paymentMethod,
+        created_at: newTransaction.timestamp
+      }).then(({ error }) => {
+        if (error) console.error("Failed to sync transaction to Supabase:", error);
+      });
+
+      // Update staff statistics in the local state
+      if (uniqueStaffIds.length > 0) {
+        setClients(prevClients => prevClients); // Trick to trigger sync/updates
+      }
+
+      // Update customer stats (visits, loyalty points, spent)
+      if (selectedCustomer) {
+        const newVisits = (selectedCustomer.visits || 0) + 1;
+        const newSpent = (selectedCustomer.totalSpent || 0) + total;
+        
+        supabase.from('clients').upsert({
+          id: selectedCustomer.id,
+          name: selectedCustomer.name,
+          phone: selectedCustomer.phone,
+          total_visits: newVisits,
+          total_spent: newSpent,
+          last_visit: new Date().toISOString().split('T')[0]
+        }).then(({ error }) => {
+          if (error) console.error("Failed to sync client update to Supabase:", error);
+        });
+
+        setClients(prevClients => prevClients.map(client => {
+          if (client.id === selectedCustomer.id) {
+            const newVisitsVal = (client.visits || 0) + 1;
+            const newSpentVal = (client.totalSpent || 0) + total;
+            // earn 10% points on total bill
+            const earnedPoints = Math.round(total * 0.1);
+            const newPoints = (client.points || 0) + earnedPoints - redeemedPoints;
+            return {
+              ...client,
+              visits: newVisitsVal,
+              totalSpent: newSpentVal,
+              points: newPoints,
+              lastVisit: new Date().toISOString().split('T')[0],
+              last30DayReminderCycle: 'pending',
+              last60DayReminderCycle: 'pending'
+            };
+          }
+          return client;
+        }));
+      }
+
+      // Trigger MSG91 WhatsApp Automation
+      if (selectedCustomer) {
+        const servicesList = cart.map(item => item.name).join(', ');
+
+        // 1. POS Checkout Confirmation
+        try {
+          await fetch('/api/automation/trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'payment_received',
+              customer: selectedCustomer,
+              template_id: 'pos_checkout_confirmation',
+              variables: [
+                total.toString(),
+                servicesList
+              ]
+            })
+          });
+        } catch (e) {
+          console.error('Failed to trigger checkout confirmation automation:', e);
         }
-        return client;
-      }));
+
+        // 2. Google Review Follow-up (2 min delay handled in backend)
+        try {
+          await fetch('/api/automation/trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'google_review_follow_up',
+              customer: selectedCustomer,
+              template_id: 'google_review_follow_up_text',
+              variables: [
+                servicesList
+              ]
+            })
+          });
+        } catch (e) {
+          console.error('Failed to trigger review follow-up automation:', e);
+        }
+
+        // 3. Upsell Follow-up (6 min delay handled in backend)
+        try {
+          await fetch('/api/automation/trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'checkout_upsell',
+              customer: selectedCustomer,
+              template_id: 'appointment_follow_up_upsell',
+              variables: [
+                "0",
+                servicesList
+              ]
+            })
+          });
+        } catch (e) {
+          console.error('Failed to trigger upsell automation:', e);
+        }
+      }
+    } catch (err) {
+      console.error('Error during finalizePayment:', err);
+    } finally {
+      setIsProcessing(false);
+      setShowQRModal(false);
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        setCart([]);
+        setIsCheckoutOpen(false);
+        setSelectedCustomer(null);
+        setDiscountType('none');
+        setDiscountValue(0);
+        setRedeemedPoints(0);
+        setSelectedPaymentMethod(null);
+      }, 3000);
     }
-
-    // Trigger MSG91 WhatsApp Automation
-    if (selectedCustomer) {
-      const servicesList = cart.map(item => item.name).join(', ');
-
-      // 1. POS Checkout Confirmation
-      try {
-        await fetch('/api/automation/trigger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'payment_received',
-            customer: selectedCustomer,
-            template_id: 'pos_checkout_confirmation',
-            variables: [
-              total.toString(),
-              servicesList
-            ]
-          })
-        });
-      } catch (e) {
-        console.error('Failed to trigger checkout confirmation automation:', e);
-      }
-
-      // 2. Google Review Follow-up (2 min delay handled in backend)
-      try {
-        await fetch('/api/automation/trigger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'google_review_follow_up',
-            customer: selectedCustomer,
-            template_id: 'google_review_follow_up_text',
-            variables: [
-              servicesList
-            ]
-          })
-        });
-      } catch (e) {
-        console.error('Failed to trigger review follow-up automation:', e);
-      }
-
-      // 3. Upsell Follow-up (6 min delay handled in backend)
-      try {
-        await fetch('/api/automation/trigger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'checkout_upsell',
-            customer: selectedCustomer,
-            template_id: 'appointment_follow_up_upsell',
-            variables: [
-              "0",
-              servicesList
-            ]
-
-          })
-        });
-      } catch (e) {
-        console.error('Failed to trigger upsell automation:', e);
-      }
-    }
-
-    setShowQRModal(false);
-    setShowSuccess(true);
-    setTimeout(() => {
-      setShowSuccess(false);
-      setCart([]);
-      setIsCheckoutOpen(false);
-      setSelectedCustomer(null);
-      setDiscountType('none');
-      setDiscountValue(0);
-      setRedeemedPoints(0);
-      setSelectedPaymentMethod(null);
-    }, 3000);
   };
 
   const handleCompletePayment = () => {
+    if (isProcessing) return;
     if (!selectedPaymentMethod) {
       alert('Please select a payment method');
       return;
@@ -378,8 +387,8 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 20, filter: 'blur(4px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.6 }}
       className="h-[calc(100vh-11rem)] md:h-[calc(100vh-9rem)] flex flex-col md:flex-row gap-4 md:gap-8 overflow-hidden pb-4"
     >
@@ -903,14 +912,16 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
 
               <div className="space-y-4">
                 <button 
+                  disabled={isProcessing}
                   onClick={handleCompletePayment}
-                  className="w-full bg-accent text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all"
+                  className="w-full bg-accent text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Confirm Payment
                 </button>
                 <button 
+                  disabled={isProcessing}
                   onClick={() => setIsCheckoutOpen(false)}
-                  className="w-full py-4 rounded-2xl font-bold text-muted hover:text-white transition-all"
+                  className="w-full py-4 rounded-2xl font-bold text-muted hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
@@ -948,16 +959,18 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
 
               <div className="w-full space-y-4">
                 <motion.button 
+                  disabled={isProcessing}
                   whileTap={{ scale: 0.95 }}
                   onClick={finalizePayment}
-                  className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all shadow-lg shadow-green-500/20"
+                  className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all shadow-lg shadow-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Payment Done
                 </motion.button>
                 <motion.button 
+                  disabled={isProcessing}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setShowQRModal(false)}
-                  className="w-full py-4 rounded-2xl font-bold text-muted hover:text-white transition-all"
+                  className="w-full py-4 rounded-2xl font-bold text-muted hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </motion.button>
@@ -1164,6 +1177,36 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Processing Loader Overlay */}
+      <AnimatePresence>
+        {isProcessing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="glass p-8 rounded-[2rem] max-w-sm w-full flex flex-col items-center text-center space-y-6"
+            >
+              <div className="relative w-16 h-16 flex items-center justify-center">
+                <span className="absolute inset-0 rounded-full border-4 border-accent/20"></span>
+                <span className="absolute inset-0 rounded-full border-4 border-accent border-t-transparent animate-spin"></span>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-white">Processing Payment</h3>
+                <p className="text-xs text-muted leading-relaxed">
+                  Please wait... Payment is being processed. The WhatsApp text will be sent within the next 5 minutes.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

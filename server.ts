@@ -25,6 +25,81 @@ async function startServer() {
     return { authKey, integratedNumber };
   };
 
+  // Keep track of sent messages / triggers to prevent spam/double-triggering
+  interface TriggerHistoryEntry {
+    event: string;
+    templateId: string;
+    timestamp: number;
+  }
+  
+  const triggerHistory: Record<string, TriggerHistoryEntry[]> = {};
+  const directSendHistory: Record<string, number[]> = {};
+
+  function shouldBlockTrigger(phone: string, event: string, templateId: string): { block: boolean; reason?: string } {
+    const now = Date.now();
+    const normalizedPhone = phone.replace(/\D/g, '');
+    if (!normalizedPhone) return { block: false };
+    
+    if (!triggerHistory[normalizedPhone]) {
+      triggerHistory[normalizedPhone] = [];
+    }
+    
+    // Clean up history older than 5 minutes (300000 ms)
+    triggerHistory[normalizedPhone] = triggerHistory[normalizedPhone].filter(
+      entry => now - entry.timestamp < 300000
+    );
+    
+    const history = triggerHistory[normalizedPhone];
+    
+    // 1. Debounce check: block identical event + template to the same phone within 30 seconds
+    const duplicate = history.find(
+      entry => entry.event === event && entry.templateId === templateId && (now - entry.timestamp < 30000)
+    );
+    if (duplicate) {
+      return { block: true, reason: `Duplicate event '${event}' with template '${templateId}' triggered within 30 seconds.` };
+    }
+    
+    // 2. Cap check: block if they exceeded 3 triggers in the last 5 minutes (user requested max 3 within 5 minutes)
+    if (history.length >= 3) {
+      return { block: true, reason: `Rate limit exceeded. Maximum of 3 WhatsApp notifications per 5 minutes is allowed for a customer.` };
+    }
+    
+    // Record this trigger
+    history.push({ event, templateId, timestamp: now });
+    return { block: false };
+  }
+
+  function shouldBlockDirectSend(phone: string): { block: boolean; reason?: string } {
+    const now = Date.now();
+    const normalizedPhone = phone.replace(/\D/g, '');
+    if (!normalizedPhone) return { block: false };
+
+    if (!directSendHistory[normalizedPhone]) {
+      directSendHistory[normalizedPhone] = [];
+    }
+
+    // Clean up history older than 5 minutes
+    directSendHistory[normalizedPhone] = directSendHistory[normalizedPhone].filter(
+      timestamp => now - timestamp < 300000
+    );
+
+    const history = directSendHistory[normalizedPhone];
+
+    // 1. Debounce: block if sent in the last 5 seconds (prevent double click)
+    const lastSend = history[history.length - 1];
+    if (lastSend && now - lastSend < 5000) {
+      return { block: true, reason: "Please wait before sending another message." };
+    }
+
+    // 2. Rate limit: limit to 3 direct messages per 5 minutes
+    if (history.length >= 3) {
+      return { block: true, reason: "Rate limit exceeded. Maximum of 3 WhatsApp messages per 5 minutes." };
+    }
+
+    history.push(now);
+    return { block: false };
+  }
+
   // API: Health Check for Secrets
   app.get("/api/whatsapp/health", (req, res) => {
     const status = {
@@ -39,6 +114,13 @@ async function startServer() {
   app.post("/api/whatsapp/send", async (req, res) => {
     const { to, message, templateId, clientId, variables } = req.body;
     
+    // Check rate limit/cap
+    const limitCheck = shouldBlockDirectSend(to || '');
+    if (limitCheck.block) {
+      console.warn(`[DIRECT SEND BLOCKED] to ${to}: ${limitCheck.reason}`);
+      return res.status(429).json({ error: limitCheck.reason });
+    }
+
     try {
       const { authKey, integratedNumber } = getMsg91Auth();
       console.log(`Attempting to send WhatsApp via MSG91 to ${to} from ${integratedNumber}`);
@@ -115,6 +197,13 @@ async function startServer() {
     ];
 
     if (supportedEvents.includes(event)) {
+      // Check rate limit / spam cap (max 3 messages within 5 minutes, debounce same event within 30s)
+      const limitCheck = shouldBlockTrigger(customer?.phone || '', event, template_id || '');
+      if (limitCheck.block) {
+        console.warn(`[AUTOMATION BLOCKED] ${event} for ${customer?.name} (${customer?.phone}): ${limitCheck.reason}`);
+        return res.status(429).json({ error: limitCheck.reason });
+      }
+
       let delay = 3000; // default 3s delay
 
       if (event === 'google_review_follow_up') {
@@ -172,7 +261,6 @@ async function startServer() {
             components.body_1 = { type: "text", value: customer?.name || "Client" };
             components.body_2 = { type: "text", value: variables?.[0] || "" };
             components.body_3 = { type: "text", value: variables?.[1] || "" };
-            components.body_4 = { type: "text", value: variables?.[2] || "" };
           } else if (finalTemplateId === 'pos_checkout_confirmation') {
             components.body_1 = { type: "text", value: customer?.name || "Client" };
             components.body_2 = { type: "text", value: variables?.[0] || "" };
