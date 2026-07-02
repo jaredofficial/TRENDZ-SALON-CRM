@@ -15,7 +15,8 @@ import {
   Scissors,
   Wind,
   Droplets,
-  Sparkles
+  Sparkles,
+  Sliders
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
@@ -34,8 +35,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const [cart, setCart] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [discountType, setDiscountType] = useState<'none' | 'fixed' | 'percent'>('none');
-  const [discountValue, setDiscountValue] = useState(0);
+  const [activeConfigCartId, setActiveConfigCartId] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
@@ -48,6 +48,8 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   
   const [serviceSearch, setServiceSearch] = useState('');
   const [posTab, setPosTab] = useState<'services' | 'cart'>('services');
+
+  const activeConfigItem = cart.find(item => item.cartId === activeConfigCartId);
 
   const [isAddServiceOpen, setIsAddServiceOpen] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
@@ -116,6 +118,8 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
       { 
         ...service, 
         cartId: Math.random().toString(36).substring(2, 9),
+        discountType: 'none',
+        discountValue: 0,
         staffIds: service.isPackage ? undefined : [],
         packageStaff: service.isPackage
           ? service.packageServices.reduce((acc: any, sub: any) => {
@@ -132,14 +136,21 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.price, 0);
-  
-  const calculateDiscount = () => {
-    if (discountType === 'fixed') return discountValue;
-    if (discountType === 'percent') return (subtotal * discountValue) / 100;
+
+  const getItemDiscount = (item: any) => {
+    if (item.discountType === 'fixed') return item.discountValue || 0;
+    if (item.discountType === 'percent') return Math.round((item.price * (item.discountValue || 0)) / 100);
     return 0;
   };
 
-  const total = Math.max(0, subtotal - calculateDiscount() - redeemedPoints);
+  const getItemFinalPrice = (item: any) => {
+    return Math.max(0, item.price - getItemDiscount(item));
+  };
+
+  const discountedSubtotal = cart.reduce((sum, item) => sum + getItemFinalPrice(item), 0);
+  const totalDiscount = cart.reduce((sum, item) => sum + getItemDiscount(item), 0);
+
+  const total = Math.max(0, discountedSubtotal - redeemedPoints);
 
   const handleCustomerSelect = (customer: any) => {
     setSelectedCustomer(customer);
@@ -172,15 +183,16 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
       const staffRevenueShare: Record<string, number> = {};
 
       cart.forEach(item => {
+        const itemFinalPrice = getItemFinalPrice(item);
         if (item.isPackage) {
           // Proportional package price share in the total transaction amount (after discounts/redeemed points)
-          const packageTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
+          const packageTotalShare = discountedSubtotal > 0 ? (itemFinalPrice / discountedSubtotal) * total : 0;
           
           const numServices = item.packageServices ? item.packageServices.length : 0;
 
           if (numServices > 0 && item.packageServices) {
             // Each sub-service is valued equally on the package price
-            const subServicePrice = item.price / numServices;
+            const subServicePrice = itemFinalPrice / numServices;
             // Each sub-service share of the final total billed amount
             const subServiceBilledShare = packageTotalShare / numServices;
 
@@ -202,11 +214,11 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
           }
         } else {
           // Regular service item: uses its own staffIds
-          const regularItemTotalShare = subtotal > 0 ? (item.price / subtotal) * total : 0;
+          const regularItemTotalShare = discountedSubtotal > 0 ? (itemFinalPrice / discountedSubtotal) * total : 0;
           const assignedIds = item.staffIds || [];
           
           if (assignedIds.length > 0) {
-            const incentiveSplit = (item.price * 0.05) / assignedIds.length;
+            const incentiveSplit = (itemFinalPrice * 0.05) / assignedIds.length;
             const revenueSplit = regularItemTotalShare / assignedIds.length;
 
             assignedIds.forEach((id: string) => {
@@ -367,8 +379,6 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
         setCart([]);
         setIsCheckoutOpen(false);
         setSelectedCustomer(null);
-        setDiscountType('none');
-        setDiscountValue(0);
         setRedeemedPoints(0);
         setSelectedPaymentMethod(null);
       }, 3000);
@@ -557,195 +567,83 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
           <AnimatePresence>
-            {cart.map((item) => (               <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                key={item.cartId}
-                className="flex flex-col p-4 bg-surface rounded-2xl border border-border group gap-3"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-sm">{item.name}</p>
-                    <p className="text-xs text-accent font-bold">₹{item.price}</p>
-                  </div>
-                  <button 
-                    onClick={() => removeFromCart(item.cartId)}
-                    className="p-2 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
+            {cart.map((item) => {
+              const hasStaffAssigned = item.isPackage
+                ? item.packageServices && Object.values(item.packageStaff || {}).every((sids: any) => sids.length > 0)
+                : (item.staffIds || []).length > 0;
 
-                {/* Regular Service Staff Assignment Dropdown */}
-                {!item.isPackage && (
-                  <div className="pt-3 border-t border-border/40 space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Assigned Staff</p>
-                    {staff.length > 0 ? (
-                      <div className="space-y-2">
-                        {/* Selected Staff Badges */}
-                        {(item.staffIds || []).length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {(item.staffIds || []).map((id: string) => {
-                              const s = staff.find(member => member.id === id);
-                              if (!s) return null;
-                              return (
-                                <span 
-                                  key={id}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent/15 text-accent rounded-full text-xs font-semibold border border-accent/25"
-                                >
-                                  {s.name}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newStaffIds = (item.staffIds || []).filter((sid: string) => sid !== id);
-                                      setCart(prev => prev.map(cartItem => 
-                                        cartItem.cartId === item.cartId 
-                                          ? { ...cartItem, staffIds: newStaffIds }
-                                          : cartItem
-                                      ));
-                                    }}
-                                    className="hover:text-red-500 transition-colors ml-0.5 font-bold"
-                                    title="Remove staff"
-                                  >
-                                    &times;
-                                  </button>
-                                </span>
-                              );
-                            })}
-                          </div>
+              const discountAmt = getItemDiscount(item);
+              const finalItemPrice = getItemFinalPrice(item);
+              
+              return (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  key={item.cartId}
+                  className="flex flex-col p-4 bg-surface rounded-2xl border border-border group gap-2 hover:border-accent/30 transition-all duration-300"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <p className="font-bold text-sm truncate text-white">{item.name}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-xs font-bold ${discountAmt > 0 ? 'text-muted line-through' : 'text-accent'}`}>
+                          ₹{item.price}
+                        </span>
+                        {discountAmt > 0 && (
+                          <span className="text-xs text-green-400 font-bold">
+                            ₹{finalItemPrice}
+                          </span>
                         )}
-                        
-                        {/* Dropdown Selector */}
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (!val) return;
-                            const assignedIds = item.staffIds || [];
-                            const newStaffIds = assignedIds.includes(val)
-                              ? assignedIds
-                              : [...assignedIds, val];
-                            setCart(prev => prev.map(cartItem => 
-                              cartItem.cartId === item.cartId 
-                                ? { ...cartItem, staffIds: newStaffIds }
-                                : cartItem
-                            ));
-                          }}
-                          className="w-full bg-surface border border-border rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-accent/50 transition-all text-white"
-                        >
-                          <option value="" className="bg-surface text-muted">Select contributing staff...</option>
-                          {staff.map(member => (
-                            <option key={member.id} value={member.id} className="bg-surface text-white">
-                              {member.name} ({member.role})
-                            </option>
-                          ))}
-                        </select>
                       </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button 
+                        type="button"
+                        onClick={() => setActiveConfigCartId(item.cartId)}
+                        className={`p-2 rounded-xl border transition-all ${
+                          hasStaffAssigned 
+                            ? 'border-green-500/30 text-green-400 hover:bg-green-500/10' 
+                            : 'border-border text-muted hover:text-white hover:bg-surface-hover'
+                        }`}
+                        title="Configure service"
+                      >
+                        <Sliders size={15} />
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => removeFromCart(item.cartId)}
+                        className="p-2 text-muted hover:text-red-500 transition-all"
+                        title="Delete service"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary badges */}
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {/* Staff Badge */}
+                    {hasStaffAssigned ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-500/10 text-green-400 rounded-full text-[10px] font-bold border border-green-500/20">
+                        Staff Configured
+                      </span>
                     ) : (
-                      <p className="text-[9px] text-muted italic">No staff found. Add staff in the Staff Tracking tab.</p>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-500/10 text-yellow-500 rounded-full text-[10px] font-bold border border-yellow-500/20">
+                        Assign Staff
+                      </span>
+                    )}
+
+                    {/* Discount Badge */}
+                    {discountAmt > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500/10 text-red-500 rounded-full text-[10px] font-bold border border-red-500/20">
+                        {item.discountType === 'percent' ? `${item.discountValue}%` : `₹${item.discountValue}`} Off
+                      </span>
                     )}
                   </div>
-                )}
-                
-                {/* Package Sub-Service Staff Assignment Dropdown */}
-                {item.isPackage && item.packageServices && (
-                  <div className="pt-3 border-t border-border/40 space-y-3">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Package Services Staff Assignment</p>
-                    {item.packageServices.map((sub: any) => {
-                      const assignedIds = item.packageStaff?.[sub.name] || [];
-                      const numServices = item.packageServices.length;
-                      const subServicePrice = Math.round(item.price / numServices);
-                      
-                      return (
-                        <div key={sub.name} className="bg-background/40 p-3 rounded-xl border border-border/30 space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-bold text-white">{sub.name}</span>
-                            <span className="text-[10px] text-muted font-bold">Valued at: ₹{subServicePrice}</span>
-                          </div>
-                          
-                          {staff.length > 0 ? (
-                            <div className="space-y-2">
-                              {/* Selected Staff Badges */}
-                              {assignedIds.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {assignedIds.map((id: string) => {
-                                    const s = staff.find(member => member.id === id);
-                                    if (!s) return null;
-                                    return (
-                                      <span 
-                                        key={id}
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent/15 text-accent rounded-full text-[10px] font-semibold border border-accent/25"
-                                      >
-                                        {s.name}
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const newStaffIds = assignedIds.filter((sid: string) => sid !== id);
-                                            setCart(prev => prev.map(cartItem => 
-                                              cartItem.cartId === item.cartId 
-                                                ? {
-                                                    ...cartItem,
-                                                    packageStaff: {
-                                                      ...cartItem.packageStaff,
-                                                      [sub.name]: newStaffIds
-                                                    }
-                                                  }
-                                                : cartItem
-                                            ));
-                                          }}
-                                          className="hover:text-red-500 transition-colors ml-0.5 font-bold"
-                                          title="Remove staff"
-                                        >
-                                          &times;
-                                        </button>
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                              
-                              {/* Dropdown Selector */}
-                              <select
-                                value=""
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (!val) return;
-                                  const newStaffIds = assignedIds.includes(val)
-                                    ? assignedIds
-                                    : [...assignedIds, val];
-                                  setCart(prev => prev.map(cartItem => 
-                                    cartItem.cartId === item.cartId 
-                                      ? {
-                                          ...cartItem,
-                                          packageStaff: {
-                                            ...cartItem.packageStaff,
-                                            [sub.name]: newStaffIds
-                                          }
-                                        }
-                                      : cartItem
-                                  ));
-                                }}
-                                className="w-full bg-surface border border-border rounded-xl py-1.5 px-3 text-[10px] focus:outline-none focus:border-accent/50 transition-all text-white"
-                              >
-                                <option value="" className="bg-surface text-muted">Select contributing staff...</option>
-                                {staff.map(member => (
-                                  <option key={member.id} value={member.id} className="bg-surface text-white">
-                                    {member.name} ({member.role})
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : (
-                            <p className="text-[9px] text-muted italic">No staff found. Add staff in the Staff Tracking tab.</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
           {cart.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-muted space-y-4 py-12">
@@ -761,44 +659,14 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
               <span className="text-muted">Subtotal</span>
               <span className="font-bold">₹{subtotal}</span>
             </div>
-            
-            {/* Discount Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted">Discount</span>
-                <div className="flex gap-1">
-                  <button 
-                    onClick={() => setDiscountType(discountType === 'percent' ? 'none' : 'percent')}
-                    className={`p-1.5 rounded-lg border transition-all ${discountType === 'percent' ? 'bg-accent border-accent text-white' : 'border-border text-muted'}`}
-                  >
-                    <Percent size={14} />
-                  </button>
-                  <button 
-                    onClick={() => setDiscountType(discountType === 'fixed' ? 'none' : 'fixed')}
-                    className={`p-1.5 rounded-lg border transition-all ${discountType === 'fixed' ? 'bg-accent border-accent text-white' : 'border-border text-muted'}`}
-                  >
-                    <Tag size={14} />
-                  </button>
-                </div>
-              </div>
-              {discountType !== 'none' && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  className="flex items-center gap-2"
-                >
-                  <input 
-                    type="number" 
-                    placeholder={discountType === 'percent' ? '%' : '₹'}
-                    value={discountValue || ''}
-                    onChange={(e) => setDiscountValue(Number(e.target.value))}
-                    className="flex-1 bg-background border border-border rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:border-accent/50"
-                  />
-                  <span className="text-xs font-bold text-red-500">-₹{calculateDiscount()}</span>
-                </motion.div>
-              )}
-            </div>
 
+            {totalDiscount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">Discount</span>
+                <span className="font-bold text-red-500">-₹{totalDiscount}</span>
+              </div>
+            )}
+            
             {/* Points Redemption */}
             {selectedCustomer && selectedCustomer.points > 0 && (
               <div className="space-y-2 pt-2 border-t border-border">
@@ -1233,6 +1101,310 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Service Configuration Modal */}
+      <AnimatePresence>
+        {activeConfigCartId && activeConfigItem && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveConfigCartId(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-lg glass rounded-[2.5rem] p-8 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-xl font-bold">{activeConfigItem.name}</h3>
+                  <p className="text-xs text-muted">Configure staff assignment and item discount</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-accent">Base: ₹{activeConfigItem.price}</p>
+                  <p className="text-xs font-semibold text-green-400">Final: ₹{getItemFinalPrice(activeConfigItem)}</p>
+                </div>
+              </div>
+
+              {/* Discount Section */}
+              <div className="bg-background/40 p-5 rounded-3xl border border-border/30 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-white">Item Discount</span>
+                  <div className="flex bg-surface p-1 rounded-xl border border-border gap-1">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setCart(prev => prev.map(item => 
+                          item.cartId === activeConfigCartId 
+                            ? { ...item, discountType: item.discountType === 'percent' ? 'none' : 'percent', discountValue: 0 }
+                            : item
+                        ));
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        activeConfigItem.discountType === 'percent' 
+                          ? 'bg-accent text-white' 
+                          : 'text-muted hover:text-white'
+                      }`}
+                    >
+                      Percent (%)
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setCart(prev => prev.map(item => 
+                          item.cartId === activeConfigCartId 
+                            ? { ...item, discountType: item.discountType === 'fixed' ? 'none' : 'fixed', discountValue: 0 }
+                            : item
+                        ));
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        activeConfigItem.discountType === 'fixed' 
+                          ? 'bg-accent text-white' 
+                          : 'text-muted hover:text-white'
+                      }`}
+                    >
+                      Fixed (₹)
+                    </button>
+                  </div>
+                </div>
+
+                {activeConfigItem.discountType !== 'none' && (
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-1">
+                      <input 
+                        type="number" 
+                        placeholder={activeConfigItem.discountType === 'percent' ? 'Enter percentage...' : 'Enter rupees...'}
+                        value={activeConfigItem.discountValue || ''}
+                        onChange={(e) => {
+                          const val = Math.max(0, Number(e.target.value));
+                          setCart(prev => prev.map(item => 
+                            item.cartId === activeConfigCartId 
+                              ? { ...item, discountValue: val }
+                              : item
+                          ));
+                        }}
+                        className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 text-sm"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
+                        {activeConfigItem.discountType === 'percent' ? '%' : '₹'}
+                      </span>
+                    </div>
+                    {getItemDiscount(activeConfigItem) > 0 && (
+                      <span className="text-sm font-bold text-red-500 shrink-0">
+                        -₹{getItemDiscount(activeConfigItem)}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Regular Service Staff Assignment */}
+              {!activeConfigItem.isPackage && (
+                <div className="bg-background/40 p-5 rounded-3xl border border-border/30 space-y-3">
+                  <p className="text-sm font-bold text-white">Assigned Stylists</p>
+                  
+                  {staff.length > 0 ? (
+                    <div className="space-y-3">
+                      {/* Selected Staff Badges */}
+                      {(activeConfigItem.staffIds || []).length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {(activeConfigItem.staffIds || []).map((id: string) => {
+                            const s = staff.find(member => member.id === id);
+                            if (!s) return null;
+                            return (
+                              <span 
+                                key={id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent/15 text-accent rounded-full text-xs font-semibold border border-accent/25"
+                              >
+                                {s.name} ({s.role})
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newStaffIds = (activeConfigItem.staffIds || []).filter((sid: string) => sid !== id);
+                                    setCart(prev => prev.map(cartItem => 
+                                      cartItem.cartId === activeConfigCartId 
+                                        ? { ...cartItem, staffIds: newStaffIds }
+                                        : cartItem
+                                    ));
+                                  }}
+                                  className="hover:text-red-500 transition-colors ml-1 font-bold text-sm"
+                                  title="Remove staff"
+                                >
+                                  &times;
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted italic">No stylists assigned yet. Please select at least one.</p>
+                      )}
+                      
+                      {/* Dropdown Selector */}
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) return;
+                          const assignedIds = activeConfigItem.staffIds || [];
+                          const newStaffIds = assignedIds.includes(val)
+                            ? assignedIds
+                            : [...assignedIds, val];
+                          setCart(prev => prev.map(cartItem => 
+                            cartItem.cartId === activeConfigCartId 
+                              ? { ...cartItem, staffIds: newStaffIds }
+                              : cartItem
+                          ));
+                        }}
+                        className="w-full bg-surface border border-border rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-accent/50 transition-all text-white"
+                      >
+                        <option value="" className="bg-surface text-muted">Select contributing staff...</option>
+                        {staff.map(member => (
+                          <option key={member.id} value={member.id} className="bg-surface text-white">
+                            {member.name} ({member.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted italic">No staff found. Please add staff in the Staff Tracking tab.</p>
+                  )}
+                </div>
+              )}
+
+              {/* Package Sub-Services Staff Assignment */}
+              {activeConfigItem.isPackage && activeConfigItem.packageServices && (
+                <div className="space-y-4">
+                  <p className="text-sm font-bold text-white">Package Services Staff Assignment</p>
+                  
+                  <div className="space-y-3 max-h-[30vh] overflow-y-auto pr-1 custom-scrollbar">
+                    {activeConfigItem.packageServices.map((sub: any) => {
+                      const assignedIds = activeConfigItem.packageStaff?.[sub.name] || [];
+                      const numServices = activeConfigItem.packageServices.length;
+                      const subServicePrice = Math.round(getItemFinalPrice(activeConfigItem) / numServices);
+                      
+                      return (
+                        <div key={sub.name} className="bg-background/40 p-4 rounded-2xl border border-border/30 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-white">{sub.name}</span>
+                            <span className="text-[10px] text-muted font-bold">Valued at: ₹{subServicePrice}</span>
+                          </div>
+                          
+                          {staff.length > 0 ? (
+                            <div className="space-y-2">
+                              {/* Selected Staff Badges */}
+                              {assignedIds.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {assignedIds.map((id: string) => {
+                                    const s = staff.find(member => member.id === id);
+                                    if (!s) return null;
+                                    return (
+                                      <span 
+                                        key={id}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent/15 text-accent rounded-full text-[10px] font-semibold border border-accent/25"
+                                      >
+                                        {s.name}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const newStaffIds = assignedIds.filter((sid: string) => sid !== id);
+                                            setCart(prev => prev.map(cartItem => 
+                                              cartItem.cartId === activeConfigCartId 
+                                                ? {
+                                                    ...cartItem,
+                                                    packageStaff: {
+                                                      ...cartItem.packageStaff,
+                                                      [sub.name]: newStaffIds
+                                                    }
+                                                  }
+                                                : cartItem
+                                            ));
+                                          }}
+                                          className="hover:text-red-500 transition-colors ml-1 font-bold text-xs"
+                                          title="Remove staff"
+                                        >
+                                          &times;
+                                        </button>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* Dropdown Selector */}
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (!val) return;
+                                  const newStaffIds = assignedIds.includes(val)
+                                    ? assignedIds
+                                    : [...assignedIds, val];
+                                  setCart(prev => prev.map(cartItem => 
+                                    cartItem.cartId === activeConfigCartId 
+                                      ? {
+                                          ...cartItem,
+                                          packageStaff: {
+                                            ...cartItem.packageStaff,
+                                            [sub.name]: newStaffIds
+                                          }
+                                        }
+                                      : cartItem
+                                  ));
+                                }}
+                                className="w-full bg-surface border border-border rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-accent/50 transition-all text-white"
+                              >
+                                <option value="" className="bg-surface text-muted">Select contributing staff...</option>
+                                {staff.map(member => (
+                                  <option key={member.id} value={member.id} className="bg-surface text-white">
+                                    {member.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-muted italic">No staff found.</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-4 pt-4 border-t border-border/30">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    // Quick validation before close
+                    if (!activeConfigItem.isPackage && (activeConfigItem.staffIds || []).length === 0) {
+                      alert('Please assign at least one staff member before saving.');
+                      return;
+                    }
+                    if (activeConfigItem.isPackage && activeConfigItem.packageServices) {
+                      for (const sub of activeConfigItem.packageServices) {
+                        const assigned = activeConfigItem.packageStaff?.[sub.name] || [];
+                        if (assigned.length === 0) {
+                          alert(`Please assign at least one staff member to the ${sub.name} service.`);
+                          return;
+                        }
+                      }
+                    }
+                    setActiveConfigCartId(null);
+                  }}
+                  className="flex-1 bg-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-all"
+                >
+                  Apply & Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </motion.div>
