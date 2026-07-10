@@ -34,7 +34,7 @@ interface POSProps {
 export default function POS({ clients, setClients, staff, transactions, setTransactions, services, setServices }: POSProps) {
   const [cart, setCart] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+
   const [activeConfigCartId, setActiveConfigCartId] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
@@ -43,7 +43,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const [showSuccess, setShowSuccess] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
   const [redeemedPoints, setRedeemedPoints] = useState(0);
-  const [showQRModal, setShowQRModal] = useState(false);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [includePastDues, setIncludePastDues] = useState(false);
   const [customAmountPaid, setCustomAmountPaid] = useState<string>('');
@@ -390,12 +390,10 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
       console.error('Error during finalizePayment:', err);
     } finally {
       setIsProcessing(false);
-      setShowQRModal(false);
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
         setCart([]);
-        setIsCheckoutOpen(false);
         setSelectedCustomer(null);
         setRedeemedPoints(0);
         setSelectedPaymentMethod(null);
@@ -403,16 +401,6 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
         setCustomAmountPaid('');
       }, 3000);
     }
-  };
-
-  const handleCompletePayment = () => {
-    if (isProcessing) return;
-    if (!selectedPaymentMethod) {
-      alert('Please select a payment method');
-      return;
-    }
-
-    finalizePayment();
   };
 
   return (
@@ -571,7 +559,17 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
                   </div>
                   <div>
                     <p className="font-bold text-sm">{selectedCustomer.name}</p>
-                    <p className="text-[10px] text-muted">{selectedCustomer.phone}</p>
+                    <div className="flex flex-wrap gap-x-2 text-[10px] text-muted font-medium">
+                      <span>{selectedCustomer.phone}</span>
+                      <span>•</span>
+                      <span className="text-accent font-bold">{selectedCustomer.points || 0} pts</span>
+                      {(selectedCustomer.dueAmount || 0) > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-red-500 font-bold">Dues: ₹{selectedCustomer.dueAmount}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button 
@@ -743,230 +741,179 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
             )}
 
             <div className="flex justify-between text-xl font-bold pt-2 border-t border-border">
-              <span>Total</span>
+              <span>Total Due</span>
               <span className="text-accent">₹{includePastDues ? (total + (selectedCustomer?.dueAmount || 0)) : total}</span>
             </div>
           </div>
-          <button 
-            disabled={cart.length === 0}
-            onClick={() => {
-              const hasPackages = cart.some(item => item.isPackage);
-              const hasRegular = cart.some(item => !item.isPackage);
 
-              if (hasPackages) {
-                for (const item of cart) {
-                  if (item.isPackage && item.packageServices) {
-                    for (const sub of item.packageServices) {
-                      const assigned = item.packageStaff?.[sub.name] || [];
-                      if (assigned.length === 0) {
-                        alert(`Please assign at least one contributing staff member to the ${sub.name} service inside the ${item.name}.`);
-                        return;
-                      }
-                    }
-                  }
-                }
-              }
-
-              if (hasRegular) {
-                for (const item of cart) {
-                  if (!item.isPackage) {
-                    const assigned = item.staffIds || [];
-                    if (assigned.length === 0) {
-                      alert(`Please assign at least one contributing staff member to the ${item.name} service.`);
-                      return;
-                    }
-                  }
-                }
-              }
-
-              setIsCheckoutOpen(true);
-            }}
-            className="w-full bg-accent text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-accent/20"
-          >
-            Checkout
-          </button>
-        </div>
-      </div>
-
-      {/* Checkout Modal */}
-      <AnimatePresence>
-        {isCheckoutOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsCheckoutOpen(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="relative w-full max-w-md glass rounded-[2.5rem] p-8 space-y-8"
-            >
-              <div className="text-center">
-                <h3 className="text-2xl font-bold mb-2">Complete Payment</h3>
-                <p className="text-muted">Select payment method for ₹{actualPaid}</p>
+          {/* Settle Bill / Payment Section (Shown only if cart is not empty) */}
+          {cart.length > 0 && (
+            <div className="pt-4 border-t border-border/30 space-y-4">
+              {/* Payment Method Selector */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 block">Payment Method</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPaymentMethod('Cash');
+                    }}
+                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                      selectedPaymentMethod === 'Cash'
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-border hover:border-accent/30 text-muted hover:text-white'
+                    }`}
+                  >
+                    <Banknote size={16} />
+                    <span>Cash</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPaymentMethod('Card');
+                    }}
+                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                      selectedPaymentMethod === 'Card'
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-border hover:border-accent/30 text-muted hover:text-white'
+                    }`}
+                  >
+                    <CreditCard size={16} />
+                    <span>Card</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPaymentMethod('UPI');
+                    }}
+                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                      selectedPaymentMethod === 'UPI'
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-border hover:border-accent/30 text-muted hover:text-white'
+                    }`}
+                  >
+                    <Wallet size={16} />
+                    <span>UPI / QR</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Outstanding Due and Payment Breakdown Section */}
+              {/* Inline UPI QR Code */}
+              {selectedPaymentMethod === 'UPI' && (
+                <div className="bg-white rounded-2xl p-4 flex flex-col items-center justify-center gap-2 relative overflow-hidden border border-border/50">
+                  <div className="absolute inset-0 border-4 border-accent/20 rounded-2xl animate-pulse pointer-events-none"></div>
+                  <QrCode size={100} className="text-black" />
+                  <p className="text-[10px] text-zinc-600 font-bold">Scan to Pay ₹{actualPaid.toLocaleString()}</p>
+                </div>
+              )}
+
+              {/* Dues split/deferred payment options if client is selected */}
               {selectedCustomer && (
-                <div className="bg-background/40 border border-border/50 rounded-3xl p-5 space-y-4 text-sm text-left">
-                  <div className="flex justify-between items-center text-muted">
-                    <span>Current Order:</span>
-                    <span className="font-bold text-white">₹{total.toLocaleString()}</span>
-                  </div>
-                  
-                  {pastDues > 0 && (
+                <div className="bg-background/40 border border-border/50 rounded-2xl p-3.5 space-y-3 text-xs">
+                  <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-muted">
-                      <span>Previous Outstanding Dues:</span>
+                      <span>Previous Dues:</span>
                       <span className={`font-bold ${includePastDues ? 'text-red-500' : 'text-muted/60'}`}>
                         ₹{pastDues.toLocaleString()}
                       </span>
                     </div>
-                  )}
-
-                  <div className="flex justify-between items-center pt-2 border-t border-border/30 text-base font-bold">
-                    <span>Total Outstanding + Bill:</span>
-                    <span className="text-white">₹{(total + pastDues).toLocaleString()}</span>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-border/30">
-                    <label className="text-xs font-bold uppercase tracking-widest text-muted block">Amount Paid Today (₹)</label>
-                    <div className="relative">
-                      <input 
-                        type="number"
-                        placeholder="Enter amount..."
-                        max={total + pastDues}
-                        min={0}
-                        value={customAmountPaid}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '') {
-                            setCustomAmountPaid('');
-                          } else {
-                            const num = Math.min(total + pastDues, Math.max(0, Number(val)));
-                            setCustomAmountPaid(num.toString());
-                          }
-                        }}
-                        className="w-full bg-surface border border-border rounded-xl py-2.5 px-4 focus:outline-none focus:border-accent/50 text-white font-bold"
-                      />
-                      <button 
-                        onClick={() => setCustomAmountPaid('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-accent hover:underline"
-                        type="button"
-                      >
-                        Reset Full
-                      </button>
+                    <div className="flex justify-between items-center text-muted">
+                      <span>Current Order:</span>
+                      <span className="font-bold text-white">₹{total.toLocaleString()}</span>
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-center pt-2">
-                    <span className="text-xs font-bold uppercase tracking-widest text-muted">Remaining Balance:</span>
+                  <div className="space-y-1.5 pt-1.5 border-t border-border/30">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-muted block">Amount Paid Today (₹)</label>
+                      <button 
+                        onClick={() => setCustomAmountPaid('')}
+                        className="text-[10px] font-bold text-accent hover:underline"
+                        type="button"
+                      >
+                        Pay Full
+                      </button>
+                    </div>
+                    <input 
+                      type="number"
+                      placeholder="Enter amount..."
+                      max={total + pastDues}
+                      min={0}
+                      value={customAmountPaid}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setCustomAmountPaid('');
+                        } else {
+                          const num = Math.min(total + pastDues, Math.max(0, Number(val)));
+                          setCustomAmountPaid(num.toString());
+                        }
+                      }}
+                      className="w-full bg-surface border border-border rounded-xl py-2 px-3 focus:outline-none focus:border-accent/50 text-white font-bold text-xs"
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-center pt-1.5 border-t border-border/30">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Remaining Balance:</span>
                     <span className={`font-bold ${remainingOutstanding > 0 ? 'text-red-500' : 'text-green-500'}`}>
                       ₹{remainingOutstanding.toLocaleString()}
                     </span>
                   </div>
                   
                   {remainingOutstanding > 0 && (
-                    <p className="text-[10px] text-red-400/80 leading-relaxed text-center">
+                    <p className="text-[9px] text-red-400/80 leading-snug">
                       * ₹{remainingOutstanding.toLocaleString()} will remain as the customer's outstanding balance.
                     </p>
                   )}
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-3">
-                <PaymentMethod 
-                  icon={Banknote} 
-                  label="Cash" 
-                  selected={selectedPaymentMethod === 'Cash'} 
-                  onClick={() => setSelectedPaymentMethod('Cash')} 
-                />
-                <PaymentMethod 
-                  icon={CreditCard} 
-                  label="Card" 
-                  selected={selectedPaymentMethod === 'Card'} 
-                  onClick={() => setSelectedPaymentMethod('Card')} 
-                />
-                <PaymentMethod 
-                  icon={Wallet} 
-                  label="UPI / QR" 
-                  selected={selectedPaymentMethod === 'UPI'} 
-                  onClick={() => setSelectedPaymentMethod('UPI')} 
-                />
-              </div>
+              {/* Complete checkout action button */}
+              <button 
+                type="button"
+                disabled={isProcessing || !selectedPaymentMethod}
+                onClick={() => {
+                  const hasPackages = cart.some(item => item.isPackage);
+                  const hasRegular = cart.some(item => !item.isPackage);
 
-              <div className="space-y-4">
-                <button 
-                  disabled={isProcessing}
-                  onClick={handleCompletePayment}
-                  className="w-full bg-accent text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Confirm Payment
-                </button>
-                <button 
-                  disabled={isProcessing}
-                  onClick={() => setIsCheckoutOpen(false)}
-                  className="w-full py-4 rounded-2xl font-bold text-muted hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Cancel
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                  if (hasPackages) {
+                    for (const item of cart) {
+                      if (item.isPackage && item.packageServices) {
+                        for (const sub of item.packageServices) {
+                          const assigned = item.packageStaff?.[sub.name] || [];
+                          if (assigned.length === 0) {
+                            alert(`Please assign at least one contributing staff member to the ${sub.name} service inside the ${item.name}.`);
+                            return;
+                          }
+                        }
+                      }
+                    }
+                  }
 
-      {/* QR Code Modal */}
-      <AnimatePresence>
-        {showQRModal && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-sm glass rounded-[2.5rem] p-8 space-y-8 flex flex-col items-center"
-            >
-              <div className="text-center">
-                <h3 className="text-2xl font-bold mb-2">Scan to Pay</h3>
-                <p className="text-muted">Pay ₹{actualPaid} via UPI</p>
-              </div>
+                  if (hasRegular) {
+                    for (const item of cart) {
+                      if (!item.isPackage) {
+                        const assigned = item.staffIds || [];
+                        if (assigned.length === 0) {
+                          alert(`Please assign at least one contributing staff member to the ${item.name} service.`);
+                          return;
+                        }
+                      }
+                    }
+                  }
 
-              <div className="w-48 h-48 bg-white rounded-2xl p-4 flex items-center justify-center relative overflow-hidden">
-                <div className="absolute inset-0 border-4 border-accent/50 rounded-2xl animate-pulse pointer-events-none"></div>
-                <QrCode size={120} className="text-black" />
-              </div>
+                  finalizePayment();
+                }}
+                className="w-full bg-accent text-white py-3.5 rounded-2xl font-bold text-base hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-accent/20"
+              >
+                {!selectedPaymentMethod ? 'Select Payment Method' : 'Complete Checkout'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
-              <div className="w-full space-y-4">
-                <motion.button 
-                  disabled={isProcessing}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={finalizePayment}
-                  className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold text-lg hover:opacity-90 transition-all shadow-lg shadow-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Payment Done
-                </motion.button>
-                <motion.button 
-                  disabled={isProcessing}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setShowQRModal(false)}
-                  className="w-full py-4 rounded-2xl font-bold text-muted hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Cancel
-                </motion.button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+
 
       {/* New Customer Modal */}
       <AnimatePresence>
