@@ -199,6 +199,14 @@ export default function App() {
         // 3. Fetch clients
         const { data: dbClients } = await supabase.from('clients').select('*');
         if (dbClients && dbClients.length > 0) {
+          let localClients: any[] = [];
+          const savedClients = localStorage.getItem('trendz_clients');
+          if (savedClients) {
+            try {
+              localClients = JSON.parse(savedClients);
+            } catch (e) {}
+          }
+
           const enrichedClients = dbClients.map(c => {
             const clientTxs = transactionsList.filter(tx => tx.phone === c.phone);
             const totalSpent = clientTxs.reduce((sum, tx) => sum + (tx.total || 0), 0);
@@ -208,6 +216,9 @@ export default function App() {
               : c.last_visit || 'N/A';
             const points = Math.round(totalSpent * 0.1);
 
+            const matchedLocal = localClients.find(lc => lc.id === c.id || lc.phone === c.phone);
+            const dueAmount = matchedLocal ? (matchedLocal.dueAmount || 0) : 0;
+
             return {
               id: c.id,
               name: c.name,
@@ -216,6 +227,7 @@ export default function App() {
               totalSpent,
               lastVisit,
               points,
+              dueAmount,
               last30DayReminderCycle: c.last_visit ? c.last_visit : undefined,
               last60DayReminderCycle: c.last_visit ? c.last_visit : undefined
             };

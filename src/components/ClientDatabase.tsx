@@ -15,6 +15,30 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
   const [visitStatus, setVisitStatus] = useState('');
   const [retentionFilter, setRetentionFilter] = useState<'all' | 'inactive30' | 'inactive60'>('all');
 
+  const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
+  const [adjustmentClient, setAdjustmentClient] = useState<any>(null);
+  const [adjustmentValue, setAdjustmentValue] = useState('');
+
+  const handleSaveAdjustment = () => {
+    if (!adjustmentClient) return;
+    const value = Math.max(0, Number(adjustmentValue) || 0);
+
+    setClients(prev => prev.map(c => {
+      if (c.id === adjustmentClient.id) {
+        const updated = { ...c, dueAmount: value };
+        if (selectedClient && selectedClient.id === c.id) {
+          setSelectedClient(updated);
+        }
+        return updated;
+      }
+      return c;
+    }));
+
+    setIsAdjustmentOpen(false);
+    setAdjustmentClient(null);
+    setAdjustmentValue('');
+  };
+
   const getDaysSinceLastVisit = (lastVisitDate: string) => {
     if (!lastVisitDate || lastVisitDate === 'N/A' || lastVisitDate === 'N/A ') return null;
     const lastVisit = new Date(lastVisitDate);
@@ -68,6 +92,28 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
             <div className="bg-surface p-4 rounded-2xl border border-border col-span-2">
               <p className="text-[10px] text-muted uppercase font-bold tracking-widest mb-1">Total Revenue Generated</p>
               <p className="text-xl font-bold text-accent">₹{(client.totalSpent || 0).toLocaleString()}</p>
+            </div>
+            <div className={`p-4 rounded-2xl border col-span-2 flex items-center justify-between gap-3 ${
+              client.dueAmount && client.dueAmount > 0 
+                ? 'bg-red-500/5 border-red-500/20' 
+                : 'bg-surface border-border'
+            }`}>
+              <div>
+                <p className="text-[10px] text-muted uppercase font-bold tracking-widest mb-1">Outstanding Balance (Dues)</p>
+                <p className={`text-xl font-bold ${client.dueAmount && client.dueAmount > 0 ? 'text-red-500' : 'text-white'}`}>
+                  ₹{(client.dueAmount || 0).toLocaleString()}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setAdjustmentClient(client);
+                  setAdjustmentValue((client.dueAmount || 0).toString());
+                  setIsAdjustmentOpen(true);
+                }}
+                className="px-4 py-2.5 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-bold transition-all text-white flex items-center justify-center gap-1.5"
+              >
+                <span>Adjust Dues</span>
+              </button>
             </div>
           </div>
 
@@ -314,6 +360,7 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
                     <th className="px-6 py-4 font-semibold">Visits</th>
                     <th className="px-6 py-4 font-semibold">Last Visit</th>
                     <th className="px-6 py-4 font-semibold">Points</th>
+                    <th className="px-6 py-4 font-semibold">Outstanding</th>
                     <th className="px-6 py-4 font-semibold">Total Spent</th>
                     <th className="px-6 py-4 font-semibold"></th>
                   </tr>
@@ -356,6 +403,15 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
                           <Award size={14} />
                           <span className="font-bold">{client.points || 0}</span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {client.dueAmount && client.dueAmount > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/10 text-red-500 border border-red-500/20">
+                            ₹{client.dueAmount.toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-muted/50 text-sm">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 font-bold text-accent">₹{(client.totalSpent || 0).toLocaleString()}</td>
                       <td className="px-6 py-4">
@@ -420,6 +476,55 @@ export default function ClientDatabase({ clients, setClients, transactions }: Cl
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {renderClientDetail(selectedClient)}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Manual Dues Adjustment Modal */}
+      <AnimatePresence>
+        {isAdjustmentOpen && adjustmentClient && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAdjustmentOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-sm glass rounded-[2rem] p-8 space-y-6"
+            >
+              <h3 className="text-xl font-bold">Adjust Dues: {adjustmentClient.name}</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted mb-2 block">Outstanding Due Amount (₹)</label>
+                  <input 
+                    type="number" 
+                    value={adjustmentValue}
+                    onChange={(e) => setAdjustmentValue(e.target.value)}
+                    placeholder="0"
+                    className="w-full bg-surface border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-accent/50 text-white"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button 
+                  onClick={handleSaveAdjustment}
+                  className="flex-1 bg-accent text-white py-3 rounded-xl font-bold hover:opacity-90 transition-all"
+                >
+                  Save
+                </button>
+                <button 
+                  onClick={() => setIsAdjustmentOpen(false)}
+                  className="flex-1 py-3 rounded-xl font-bold text-muted hover:text-white transition-all"
+                >
+                  Cancel
+                </button>
               </div>
             </motion.div>
           </div>

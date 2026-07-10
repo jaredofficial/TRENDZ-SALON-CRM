@@ -45,6 +45,8 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const [redeemedPoints, setRedeemedPoints] = useState(0);
   const [showQRModal, setShowQRModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [includePastDues, setIncludePastDues] = useState(false);
+  const [customAmountPaid, setCustomAmountPaid] = useState<string>('');
   
   const [serviceSearch, setServiceSearch] = useState('');
   const [posTab, setPosTab] = useState<'services' | 'cart'>('services');
@@ -151,10 +153,16 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
   const totalDiscount = cart.reduce((sum, item) => sum + getItemDiscount(item), 0);
 
   const total = Math.max(0, discountedSubtotal - redeemedPoints);
+  const pastDues = selectedCustomer ? (selectedCustomer.dueAmount || 0) : 0;
+  const totalWithDues = includePastDues ? (total + pastDues) : total;
+  const actualPaid = customAmountPaid !== '' ? Number(customAmountPaid) : totalWithDues;
+  const remainingOutstanding = Math.max(0, (total + pastDues) - actualPaid);
 
   const handleCustomerSelect = (customer: any) => {
     setSelectedCustomer(customer);
     setCustomerSearch('');
+    setIncludePastDues(false);
+    setCustomAmountPaid('');
   };
 
   const filteredCustomers = clients.filter(c => 
@@ -167,6 +175,11 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
     setIsProcessing(true);
 
     try {
+      const pastDues = selectedCustomer ? (selectedCustomer.dueAmount || 0) : 0;
+      const totalWithDues = includePastDues ? (total + pastDues) : total;
+      const actualPaid = customAmountPaid !== '' ? Number(customAmountPaid) : totalWithDues;
+      const newDueAmount = Math.max(0, (total + pastDues) - actualPaid);
+
       // Collect unique staff IDs across all items in the cart
       const packageStaffIds = cart.flatMap(item => 
         item.isPackage ? Object.values(item.packageStaff || {}).flat() as string[] : []
@@ -241,8 +254,10 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
         timestamp: new Date().toISOString(),
         clientName: selectedCustomer ? selectedCustomer.name : 'Walk-in Customer',
         phone: selectedCustomer ? selectedCustomer.phone : 'N/A',
-        services: cart.map(item => item.name).join(', '),
-        total: total,
+        services: cart.map(item => item.name).join(', ') + 
+                  (includePastDues ? ` (Paid Past Dues: ₹${pastDues})` : '') +
+                  (newDueAmount > 0 ? ` (Remaining Due: ₹${newDueAmount})` : ''),
+        total: actualPaid,
         paymentMethod: selectedPaymentMethod || 'Cash',
         staffIds: uniqueStaffIds,
         staffNames: contributingStaffNames || 'None',
@@ -274,7 +289,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
       // Update customer stats (visits, loyalty points, spent)
       if (selectedCustomer) {
         const newVisits = (selectedCustomer.visits || 0) + 1;
-        const newSpent = (selectedCustomer.totalSpent || 0) + total;
+        const newSpent = (selectedCustomer.totalSpent || 0) + actualPaid;
         
         supabase.from('clients').upsert({
           id: selectedCustomer.id,
@@ -290,15 +305,16 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
         setClients(prevClients => prevClients.map(client => {
           if (client.id === selectedCustomer.id) {
             const newVisitsVal = (client.visits || 0) + 1;
-            const newSpentVal = (client.totalSpent || 0) + total;
-            // earn 10% points on total bill
-            const earnedPoints = Math.round(total * 0.1);
-            const newPoints = (client.points || 0) + earnedPoints - redeemedPoints;
+            const newSpentVal = (client.totalSpent || 0) + actualPaid;
+            // earn 10% points on actual payment amount
+            const earnedPoints = Math.round(actualPaid * 0.1);
+            const newPoints = Math.max(0, (client.points || 0) + earnedPoints - redeemedPoints);
             return {
               ...client,
               visits: newVisitsVal,
               totalSpent: newSpentVal,
               points: newPoints,
+              dueAmount: newDueAmount,
               lastVisit: new Date().toISOString().split('T')[0],
               last30DayReminderCycle: 'pending',
               last60DayReminderCycle: 'pending'
@@ -310,7 +326,9 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
 
       // Trigger MSG91 WhatsApp Automation
       if (selectedCustomer) {
-        const servicesList = cart.map(item => item.name).join(', ');
+        const servicesList = cart.map(item => item.name).join(', ') + 
+                             (includePastDues ? ` (Paid Past Dues: ₹${pastDues})` : '') +
+                             (newDueAmount > 0 ? ` (Remaining Due: ₹${newDueAmount})` : '');
 
         // 1. POS Checkout Confirmation
         try {
@@ -322,7 +340,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
               customer: selectedCustomer,
               template_id: 'pos_checkout_confirmation',
               variables: [
-                total.toString(),
+                actualPaid.toString(),
                 servicesList
               ]
             })
@@ -381,6 +399,8 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
         setSelectedCustomer(null);
         setRedeemedPoints(0);
         setSelectedPaymentMethod(null);
+        setIncludePastDues(false);
+        setCustomAmountPaid('');
       }, 3000);
     }
   };
@@ -543,22 +563,48 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
               )}
             </div>
           ) : (
-            <div className="bg-accent/10 border border-accent/20 rounded-2xl p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-white font-bold">
-                  {selectedCustomer.name[0]}
+            <div className="flex flex-col gap-2">
+              <div className="bg-accent/10 border border-accent/20 rounded-2xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-white font-bold">
+                    {selectedCustomer.name[0]}
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">{selectedCustomer.name}</p>
+                    <p className="text-[10px] text-muted">{selectedCustomer.phone}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold text-sm">{selectedCustomer.name}</p>
-                  <p className="text-[10px] text-muted">{selectedCustomer.phone}</p>
-                </div>
+                <button 
+                  onClick={() => {
+                    setSelectedCustomer(null);
+                    setIncludePastDues(false);
+                    setCustomAmountPaid('');
+                  }}
+                  className="text-muted hover:text-red-500 transition-all"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
-              <button 
-                onClick={() => setSelectedCustomer(null)}
-                className="text-muted hover:text-red-500 transition-all"
-              >
-                <Trash2 size={16} />
-              </button>
+              {selectedCustomer.dueAmount && selectedCustomer.dueAmount > 0 ? (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Outstanding Dues</p>
+                      <p className="font-bold text-base text-red-500">₹{selectedCustomer.dueAmount.toLocaleString()}</p>
+                    </div>
+                    <button
+                      onClick={() => setIncludePastDues(!includePastDues)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        includePastDues 
+                          ? 'bg-red-500 text-white shadow-md shadow-red-500/20' 
+                          : 'bg-surface border border-border text-muted hover:text-white'
+                      }`}
+                    >
+                      {includePastDues ? 'Dues Included' : 'Add to Bill'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -689,9 +735,16 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
               </div>
             )}
 
+            {selectedCustomer && includePastDues && (selectedCustomer.dueAmount || 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">Past Dues Included</span>
+                <span className="font-bold text-red-500">+₹{selectedCustomer.dueAmount}</span>
+              </div>
+            )}
+
             <div className="flex justify-between text-xl font-bold pt-2 border-t border-border">
               <span>Total</span>
-              <span className="text-accent">₹{total}</span>
+              <span className="text-accent">₹{includePastDues ? (total + (selectedCustomer?.dueAmount || 0)) : total}</span>
             </div>
           </div>
           <button 
@@ -754,8 +807,75 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
             >
               <div className="text-center">
                 <h3 className="text-2xl font-bold mb-2">Complete Payment</h3>
-                <p className="text-muted">Select payment method for ₹{total}</p>
+                <p className="text-muted">Select payment method for ₹{actualPaid}</p>
               </div>
+
+              {/* Outstanding Due and Payment Breakdown Section */}
+              {selectedCustomer && (
+                <div className="bg-background/40 border border-border/50 rounded-3xl p-5 space-y-4 text-sm text-left">
+                  <div className="flex justify-between items-center text-muted">
+                    <span>Current Order:</span>
+                    <span className="font-bold text-white">₹{total.toLocaleString()}</span>
+                  </div>
+                  
+                  {pastDues > 0 && (
+                    <div className="flex justify-between items-center text-muted">
+                      <span>Previous Outstanding Dues:</span>
+                      <span className={`font-bold ${includePastDues ? 'text-red-500' : 'text-muted/60'}`}>
+                        ₹{pastDues.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center pt-2 border-t border-border/30 text-base font-bold">
+                    <span>Total Outstanding + Bill:</span>
+                    <span className="text-white">₹{(total + pastDues).toLocaleString()}</span>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-border/30">
+                    <label className="text-xs font-bold uppercase tracking-widest text-muted block">Amount Paid Today (₹)</label>
+                    <div className="relative">
+                      <input 
+                        type="number"
+                        placeholder="Enter amount..."
+                        max={total + pastDues}
+                        min={0}
+                        value={customAmountPaid}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setCustomAmountPaid('');
+                          } else {
+                            const num = Math.min(total + pastDues, Math.max(0, Number(val)));
+                            setCustomAmountPaid(num.toString());
+                          }
+                        }}
+                        className="w-full bg-surface border border-border rounded-xl py-2.5 px-4 focus:outline-none focus:border-accent/50 text-white font-bold"
+                      />
+                      <button 
+                        onClick={() => setCustomAmountPaid('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-accent hover:underline"
+                        type="button"
+                      >
+                        Reset Full
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2">
+                    <span className="text-xs font-bold uppercase tracking-widest text-muted">Remaining Balance:</span>
+                    <span className={`font-bold ${remainingOutstanding > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                      ₹{remainingOutstanding.toLocaleString()}
+                    </span>
+                  </div>
+                  
+                  {remainingOutstanding > 0 && (
+                    <p className="text-[10px] text-red-400/80 leading-relaxed text-center">
+                      * ₹{remainingOutstanding.toLocaleString()} will remain as the customer's outstanding balance.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-3">
                 <PaymentMethod 
@@ -817,7 +937,7 @@ export default function POS({ clients, setClients, staff, transactions, setTrans
             >
               <div className="text-center">
                 <h3 className="text-2xl font-bold mb-2">Scan to Pay</h3>
-                <p className="text-muted">Pay ₹{total} via UPI</p>
+                <p className="text-muted">Pay ₹{actualPaid} via UPI</p>
               </div>
 
               <div className="w-48 h-48 bg-white rounded-2xl p-4 flex items-center justify-center relative overflow-hidden">
